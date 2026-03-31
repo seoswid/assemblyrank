@@ -21,9 +21,26 @@
 - `데이터 업데이트` 클릭
 - 원본 DB와 결과 DB가 모두 `/data` 아래에 생성됩니다.
 
-## 6. 저장되는 파일
+## 6. 자동 업데이트 추천
+- Railway 공식 문서 기준으로, 주기 실행은 별도 Cron Job 서비스로 두는 것이 가장 안전합니다.
+- 웹 서비스는 계속 켜져 있어야 하고, Cron Job 서비스는 작업 후 종료되어야 합니다.
+- Cron 서비스의 시작 명령은 아래처럼 설정합니다.
+
+```bash
+python server.py --refresh-and-exit
+```
+
+- 예시 스케줄:
+  - 매일 한국시간 오전 6시 = UTC 21시 전날
+  - Cron 표현식: `0 21 * * *`
+
+- Railway 문서:
+  - [Cron Jobs](https://docs.railway.com/guides/cron-jobs)
+  - [Services](https://docs.railway.com/deploy/services)
+
+## 7. 저장되는 파일
 - `assembly_rankings.db`
 - `assembly_rankings_result.db`
 
-## 7. 추천
+## 8. 추천
 - 결과가 안정화되면 Railway Volume 백업도 켜 두는 것이 좋습니다.

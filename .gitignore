@@ -1,2 +1,12 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
 assembly_rankings.db
-*.db
+assembly_rankings.db-shm
+assembly_rankings.db-wal
+assembly_rankings_result.db
+
+.env
+.env.*

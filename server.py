@@ -687,7 +687,21 @@ def main() -> None:
         default=int(os.environ.get("PORT", "8000")),
         help="Port to listen on.",
     )
+    parser.add_argument(
+        "--refresh-and-exit",
+        action="store_true",
+        help="Refresh source data and rebuild result DB, then exit.",
+    )
     args = parser.parse_args()
+
+    if args.refresh_and_exit:
+        print("Refreshing source DB and rebuilding result DB...")
+        payload = sync_database()
+        print(
+            f"Done. Synced {payload['meta']['member_count']} members, "
+            f"{payload['meta']['bill_count']} bills, {payload['meta']['vote_row_count']} votes."
+        )
+        return
 
     server = ThreadingHTTPServer((args.host, args.port), AppHandler)
     local_ip = get_local_ip()
