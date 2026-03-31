@@ -16,6 +16,8 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from flask import Flask, Response, jsonify, send_from_directory
+
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(
@@ -737,6 +739,71 @@ def create_http_server(host: str, port: int) -> ThreadingHTTPServer:
     return ThreadingHTTPServer((host, port), AppHandler)
 
 
+app = Flask(__name__, static_folder=None)
+
+
+@app.get("/")
+def flask_index() -> Response:
+    return send_from_directory(BASE_DIR, "index.html")
+
+
+@app.get("/app.js")
+def flask_app_js() -> Response:
+    return send_from_directory(BASE_DIR, "app.js", mimetype="application/javascript")
+
+
+@app.get("/styles.css")
+def flask_styles_css() -> Response:
+    return send_from_directory(BASE_DIR, "styles.css", mimetype="text/css")
+
+
+@app.get("/favicon.ico")
+def flask_favicon() -> Response:
+    return Response(status=HTTPStatus.NO_CONTENT)
+
+
+@app.get("/api/dashboard")
+def flask_dashboard() -> Response:
+    try:
+        return jsonify(build_dashboard_payload())
+    except FileNotFoundError as error:
+        return jsonify({"error": str(error)}), HTTPStatus.NOT_FOUND
+    except Exception as error:
+        print(f"Request failed: GET /api/dashboard -> {error}", flush=True)
+        traceback.print_exc()
+        return jsonify({"error": str(error)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.post("/api/refresh")
+def flask_refresh() -> Response:
+    try:
+        return jsonify(sync_database())
+    except Exception as error:
+        print(f"Request failed: POST /api/refresh -> {error}", flush=True)
+        traceback.print_exc()
+        return jsonify({"error": str(error)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.post("/api/rebuild-result-db")
+def flask_rebuild_result_db() -> Response:
+    try:
+        payload = build_dashboard_payload_from_source()
+        save_dashboard_payload_to_result_db(payload)
+        return jsonify(payload)
+    except Exception as error:
+        print(f"Request failed: POST /api/rebuild-result-db -> {error}", flush=True)
+        traceback.print_exc()
+        return jsonify({"error": str(error)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.get("/<path:asset_path>")
+def flask_asset(asset_path: str) -> Response:
+    file_path = (BASE_DIR / asset_path).resolve()
+    if not str(file_path).startswith(str(BASE_DIR.resolve())) or not file_path.is_file():
+        return jsonify({"error": "Not found"}), HTTPStatus.NOT_FOUND
+    return send_from_directory(BASE_DIR, asset_path)
+
+
 def get_local_ip() -> str:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -771,7 +838,6 @@ def main() -> None:
         )
         return
 
-    server = create_http_server(args.host, args.port)
     local_ip = get_local_ip()
     print(f"Serving database-backed app at http://127.0.0.1:{args.port}")
     print(f"Data directory: {DATA_DIR}")
@@ -779,11 +845,9 @@ def main() -> None:
         print(f"LAN access: http://{local_ip}:{args.port}")
         print("For internet access, open the firewall and port-forward this port on your router or use a tunnel.")
     try:
-        server.serve_forever()
+        app.run(host=args.host, port=args.port, threaded=True)
     except KeyboardInterrupt:
         pass
-    finally:
-        server.server_close()
 
 
 if __name__ == "__main__":

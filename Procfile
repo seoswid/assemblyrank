@@ -1,1 +1,1 @@
-web: python server.py --host 0.0.0.0 --port $PORT
+web: gunicorn --workers 2 --threads 4 --bind 0.0.0.0:$PORT server:app
