@@ -62,7 +62,7 @@ async function fetchDashboard(options = {}) {
   try {
     updateStatus("SQLite 데이터베이스에서 랭킹을 읽는 중입니다.", "저장된 최신 집계 결과를 불러옵니다.", 22);
     const response = await fetch("/api/dashboard");
-    const payload = await response.json();
+    const payload = await readJsonResponse(response);
 
     if (!response.ok) {
       throw new Error(payload.error || "대시보드 데이터를 읽지 못했습니다.");
@@ -100,26 +100,62 @@ async function refreshDatabase() {
   setButtonsDisabled(true);
 
   try {
-    updateStatus("원본 데이터를 업데이트하는 중입니다.", "국회의원, 의안, 표결 원본 DB를 갱신한 뒤 결과 DB도 다시 만듭니다.", 10);
+    updateStatus("원본 데이터를 업데이트 요청 중입니다.", "서버에서 백그라운드 동기화를 시작합니다.", 10);
     const response = await fetch("/api/refresh", { method: "POST" });
-    const payload = await response.json();
+    const payload = await readJsonResponse(response);
 
     if (!response.ok) {
       throw new Error(payload.error || "데이터 업데이트에 실패했습니다.");
     }
 
-    hydrateDashboard(payload);
-    updateStatus(
-      "",
-      `데이터 동기화 시간: ${payload.meta.last_synced_at || "없음"}`,
-      100,
-    );
+    await waitForRefreshCompletion(payload);
+    await fetchDashboard();
   } catch (error) {
     handleFatalError(error);
   } finally {
     state.loading = false;
     setButtonsDisabled(false);
   }
+}
+
+async function waitForRefreshCompletion(initialStatus) {
+  let statusPayload = initialStatus;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < 1000 * 60 * 20) {
+    const status = statusPayload.status || "queued";
+    if (status === "completed") {
+      return;
+    }
+    if (status === "failed") {
+      throw new Error(statusPayload.error || "데이터 업데이트 중 오류가 발생했습니다.");
+    }
+
+    updateStatus(
+      "원본 데이터를 업데이트하는 중입니다.",
+      "열린국회 OpenAPI에서 데이터를 수집 중입니다. 첫 실행은 몇 분 정도 걸릴 수 있습니다.",
+      50,
+    );
+
+    await delay(5000);
+    const response = await fetch("/api/refresh-status");
+    statusPayload = await readJsonResponse(response);
+  }
+
+  throw new Error("데이터 업데이트가 시간 내에 끝나지 않았습니다. 잠시 후 다시 불러와 주세요.");
+}
+
+async function readJsonResponse(response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch (error) {
+    throw new Error(text || "서버가 JSON이 아닌 응답을 반환했습니다.");
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function hydrateDashboard(payload) {

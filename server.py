@@ -6,6 +6,7 @@ import mimetypes
 import os
 import sqlite3
 import socket
+import threading
 import traceback
 import urllib.parse
 import urllib.request
@@ -40,6 +41,15 @@ FALLBACK_API_CONFIG = {
     "member_url": "https://open.assembly.go.kr/portal/openapi/ALLNAMEMBER",
     "bill_url": "https://open.assembly.go.kr/portal/openapi/ALLBILLV2",
     "vote_url": "https://open.assembly.go.kr/portal/openapi/nojepdqqaweusdfbi",
+}
+
+refresh_job_lock = threading.Lock()
+refresh_job_state: dict[str, Any] = {
+    "status": "idle",
+    "started_at": None,
+    "finished_at": None,
+    "error": None,
+    "last_synced_at": None,
 }
 
 
@@ -591,6 +601,58 @@ def build_dashboard_payload() -> dict[str, Any]:
     return payload
 
 
+def get_refresh_status() -> dict[str, Any]:
+    with refresh_job_lock:
+        return dict(refresh_job_state)
+
+
+def set_refresh_status(**updates: Any) -> None:
+    with refresh_job_lock:
+        refresh_job_state.update(updates)
+
+
+def run_refresh_job() -> None:
+    set_refresh_status(
+        status="running",
+        started_at=datetime.now().isoformat(timespec="seconds"),
+        finished_at=None,
+        error=None,
+    )
+    try:
+        payload = sync_database()
+        set_refresh_status(
+            status="completed",
+            finished_at=datetime.now().isoformat(timespec="seconds"),
+            last_synced_at=payload.get("meta", {}).get("last_synced_at"),
+            error=None,
+        )
+    except Exception as error:
+        print(f"Background refresh failed: {error}", flush=True)
+        traceback.print_exc()
+        set_refresh_status(
+            status="failed",
+            finished_at=datetime.now().isoformat(timespec="seconds"),
+            error=str(error),
+        )
+
+
+def start_refresh_job() -> dict[str, Any]:
+    with refresh_job_lock:
+        if refresh_job_state.get("status") == "running":
+            return dict(refresh_job_state)
+        refresh_job_state.update(
+            {
+                "status": "queued",
+                "started_at": datetime.now().isoformat(timespec="seconds"),
+                "finished_at": None,
+                "error": None,
+            }
+        )
+
+    threading.Thread(target=run_refresh_job, daemon=True).start()
+    return get_refresh_status()
+
+
 def latest_proposals(connection: sqlite3.Connection, naas_cd: str) -> list[dict[str, Any]]:
     rows = connection.execute(
         """
@@ -777,11 +839,16 @@ def flask_dashboard() -> Response:
 @app.post("/api/refresh")
 def flask_refresh() -> Response:
     try:
-        return jsonify(sync_database())
+        return jsonify(start_refresh_job()), HTTPStatus.ACCEPTED
     except Exception as error:
         print(f"Request failed: POST /api/refresh -> {error}", flush=True)
         traceback.print_exc()
         return jsonify({"error": str(error)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.get("/api/refresh-status")
+def flask_refresh_status() -> Response:
+    return jsonify(get_refresh_status())
 
 
 @app.post("/api/rebuild-result-db")
