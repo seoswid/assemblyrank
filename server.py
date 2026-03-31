@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 import os
 import sqlite3
 import socket
+import traceback
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -620,21 +622,45 @@ class AppHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(BASE_DIR), **kwargs)
 
     def do_GET(self) -> None:
-        if self.path == "/api/dashboard":
-            self.handle_dashboard()
-            return
-        if self.path == "/":
-            self.path = "/index.html"
-        super().do_GET()
+        try:
+            request_path = urllib.parse.urlparse(self.path).path
+            if request_path == "/api/dashboard":
+                self.handle_dashboard()
+                return
+            if request_path == "/":
+                self.serve_static_file(BASE_DIR / "index.html")
+                return
+            if request_path == "/favicon.ico":
+                self.send_response(HTTPStatus.NO_CONTENT)
+                self.end_headers()
+                return
+
+            file_path = (BASE_DIR / request_path.lstrip("/")).resolve()
+            if not str(file_path).startswith(str(BASE_DIR.resolve())):
+                self.send_error(HTTPStatus.FORBIDDEN, "Forbidden")
+                return
+            if file_path.is_file():
+                self.serve_static_file(file_path)
+                return
+
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+        except Exception as error:
+            self.log_runtime_exception(error)
+            self.respond_json({"error": str(error)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def do_POST(self) -> None:
-        if self.path == "/api/refresh":
-            self.handle_refresh()
-            return
-        if self.path == "/api/rebuild-result-db":
-            self.handle_rebuild_result_db()
-            return
-        self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+        try:
+            request_path = urllib.parse.urlparse(self.path).path
+            if request_path == "/api/refresh":
+                self.handle_refresh()
+                return
+            if request_path == "/api/rebuild-result-db":
+                self.handle_rebuild_result_db()
+                return
+            self.send_error(HTTPStatus.NOT_FOUND, "Not found")
+        except Exception as error:
+            self.log_runtime_exception(error)
+            self.respond_json({"error": str(error)}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def handle_dashboard(self) -> None:
         try:
@@ -667,6 +693,21 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def serve_static_file(self, file_path: Path) -> None:
+        body = file_path.read_bytes()
+        content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+        if content_type.startswith("text/") or content_type in {"application/javascript", "application/json"}:
+            content_type = f"{content_type}; charset=utf-8"
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_runtime_exception(self, error: Exception) -> None:
+        print(f"Request failed: {self.command} {self.path} -> {error}", flush=True)
+        traceback.print_exc()
 
 
 def get_local_ip() -> str:
