@@ -618,6 +618,8 @@ def latest_votes(connection: sqlite3.Connection, member_name: str) -> list[dict[
 
 
 class AppHandler(SimpleHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, directory=str(BASE_DIR), **kwargs)
 
@@ -632,6 +634,7 @@ class AppHandler(SimpleHTTPRequestHandler):
                 return
             if request_path == "/favicon.ico":
                 self.send_response(HTTPStatus.NO_CONTENT)
+                self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
 
@@ -691,6 +694,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
@@ -702,6 +706,7 @@ class AppHandler(SimpleHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
