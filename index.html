@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>국회의원 랭킹</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero__copy">
+        <p class="eyebrow">Assembly Insight Ranking</p>
+        <h1>국회의원 랭킹</h1>
+        <p class="hero__description">
+          열린국회 오픈API 기준의 제22대 국회의원 데이터입니다.
+        </p>
+        <div class="hero__actions">
+          <button id="loadButton" class="button button--primary">데이터 업데이트</button>
+          <button id="refreshVotesButton" class="button button--ghost">저장된 결과 불러오기</button>
+        </div>
+      </div>
+    </header>
+
+    <section class="toolbar">
+      <label class="field">
+        <span>검색</span>
+        <input id="searchInput" type="search" placeholder="의원명, 정당, 지역구 검색">
+      </label>
+      <label class="field">
+        <span>정당</span>
+        <select id="partyFilter">
+          <option value="">전체</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>정렬</span>
+        <select id="sortSelect">
+          <option value="score">종합점수</option>
+          <option value="attendanceRate">출석률</option>
+          <option value="proposalCount">대표발의</option>
+          <option value="processedProposalCount">처리의안</option>
+          <option value="voteCount">표결참여수</option>
+          <option value="name">이름</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="status-panel">
+      <div class="status-panel__message" id="statusMessage">대기 중</div>
+      <div class="status-panel__meta" id="statusMeta">API 호출 전입니다.</div>
+    </section>
+
+    <section class="summary-grid" id="summaryGrid">
+      <article class="summary-card">
+        <span class="summary-card__label">대상 의원(현역 기준)</span>
+        <strong class="summary-card__value" id="memberCount">-</strong>
+      </article>
+      <article class="summary-card">
+        <span class="summary-card__label">평균 출석률</span>
+        <strong class="summary-card__value" id="avgAttendance">-</strong>
+      </article>
+      <article class="summary-card">
+        <span class="summary-card__label">총 대표발의</span>
+        <strong class="summary-card__value" id="totalProposals">-</strong>
+      </article>
+      <article class="summary-card">
+        <span class="summary-card__label">가장 활발한 발의</span>
+        <strong class="summary-card__value" id="topProposer">-</strong>
+      </article>
+    </section>
+
+    <main class="content-grid">
+      <section class="table-card">
+        <div class="table-card__header">
+          <div>
+            <h2>국회의원 랭킹</h2>
+            <p>랭킹 행을 클릭하면 상세 정보와 최근 대표발의 이력을 확인할 수 있습니다.</p>
+          </div>
+          <div class="table-card__caption" id="resultCount">0명</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>순위</th>
+                <th>의원</th>
+                <th>정당</th>
+                <th>출석률</th>
+                <th>표결 참여율</th>
+                <th>대표발의</th>
+                <th>처리의안</th>
+                <th>종합점수</th>
+              </tr>
+            </thead>
+            <tbody id="rankingBody">
+              <tr>
+                <td colspan="8" class="empty">랭킹을 불러오면 결과가 여기에 표시됩니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="detail-card" id="detailCard">
+        <div class="detail-card__placeholder">
+          왼쪽 랭킹에서 의원을 선택하면 상세 정보가 표시됩니다.
+        </div>
+      </aside>
+    </main>
+
+    <section class="hero__panel info-panel">
+      <div class="hero__panel-label">집계 기준</div>
+      <dl class="hero__stats">
+        <div>
+          <dt>대수</dt>
+          <dd id="assemblyLabel">제22대</dd>
+        </div>
+        <div>
+          <dt>종합점수</dt>
+          <dd>출석률 65% + 대표발의 25% + 처리의안 10%</dd>
+        </div>
+        <div>
+          <dt>출석률 정의</dt>
+          <dd>찬성·반대·기권을 출석, 불참을 결석으로 계산</dd>
+        </div>
+        <div>
+          <dt>발의 실적 정의</dt>
+          <dd>의안 API의 <code>PPSR_NM</code> 기준 대표발의 건수를 집계</dd>
+        </div>
+        <div>
+          <dt>저장 방식</dt>
+          <dd>OpenAPI 수집 결과를 로컬 SQLite DB에 저장한 뒤 랭킹을 계산</dd>
+        </div>
+      </dl>
+    </section>
+  </div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

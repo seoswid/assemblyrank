@@ -1,0 +1,11 @@
+key:fc8d86af691f4f5798f7fe39595d1de9
+
+
+국회의원 정보 통합 API
+https://open.assembly.go.kr/portal/openapi/ALLNAMEMBER
+
+의안정보 통합 API
+https://open.assembly.go.kr/portal/openapi/ALLBILLV2?key=fc8d86af691f4f5798f7fe39595d1de9
+
+국회의원 본회의 표결정보
+https://open.assembly.go.kr/portal/openapi/nojepdqqaweusdfbi
