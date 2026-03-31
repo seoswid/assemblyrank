@@ -715,6 +715,28 @@ class AppHandler(SimpleHTTPRequestHandler):
         traceback.print_exc()
 
 
+class DualStackThreadingHTTPServer(ThreadingHTTPServer):
+    address_family = socket.AF_INET6
+
+    def server_bind(self) -> None:
+        if hasattr(socket, "IPPROTO_IPV6") and hasattr(socket, "IPV6_V6ONLY"):
+            try:
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            except OSError:
+                pass
+        super().server_bind()
+
+
+def create_http_server(host: str, port: int) -> ThreadingHTTPServer:
+    normalized_host = host.strip()
+    if normalized_host == "0.0.0.0":
+        try:
+            return DualStackThreadingHTTPServer(("::", port), AppHandler)
+        except OSError:
+            pass
+    return ThreadingHTTPServer((host, port), AppHandler)
+
+
 def get_local_ip() -> str:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
@@ -749,7 +771,7 @@ def main() -> None:
         )
         return
 
-    server = ThreadingHTTPServer((args.host, args.port), AppHandler)
+    server = create_http_server(args.host, args.port)
     local_ip = get_local_ip()
     print(f"Serving database-backed app at http://127.0.0.1:{args.port}")
     print(f"Data directory: {DATA_DIR}")
