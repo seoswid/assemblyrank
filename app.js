@@ -54,6 +54,17 @@ function wireEvents() {
 }
 
 async function boot() {
+  const initialPayload = window.__INITIAL_DASHBOARD__;
+  if (initialPayload?.rankings?.length) {
+    await hydrateDashboard(initialPayload);
+    updateStatus(
+      "",
+      `데이터 동기화 시간: ${initialPayload.meta?.last_synced_at || "없음"}`,
+      100,
+    );
+    return;
+  }
+
   updateStatus("데이터베이스 연결을 준비하는 중입니다.", "로컬 서버 API를 확인합니다.", 8);
   await fetchDashboard({ silentNotReady: true });
 }

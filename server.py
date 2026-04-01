@@ -1099,9 +1099,26 @@ def create_http_server(host: str, port: int) -> ThreadingHTTPServer:
 app = Flask(__name__, static_folder=None)
 
 
+def render_index_html() -> str:
+    html = (BASE_DIR / "index.html").read_text(encoding="utf-8")
+    initial_payload = None
+    try:
+        initial_payload = build_dashboard_payload()
+    except Exception:
+        initial_payload = None
+
+    payload_json = json.dumps(initial_payload, ensure_ascii=False).replace("</", "<\\/")
+    html = html.replace(
+        '<script>window.__INITIAL_DASHBOARD__ = null;</script>',
+        f"<script>window.__INITIAL_DASHBOARD__ = {payload_json};</script>",
+        1,
+    )
+    return html
+
+
 @app.get("/")
 def flask_index() -> Response:
-    return send_from_directory(BASE_DIR, "index.html")
+    return render_index_html()
 
 
 @app.get("/app.js")
