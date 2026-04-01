@@ -1,17 +1,17 @@
 :root {
-  --bg: #f4efe6;
-  --bg-accent: #fffaf2;
-  --card: rgba(255, 250, 242, 0.86);
-  --card-strong: rgba(255, 248, 236, 0.96);
-  --line: rgba(74, 53, 29, 0.12);
-  --text: #23180d;
-  --muted: #6a5640;
-  --brand: #c4512d;
-  --brand-deep: #7b2f17;
-  --brand-soft: rgba(196, 81, 45, 0.14);
-  --ok: #257c4b;
-  --warn: #996f10;
-  --shadow: 0 18px 45px rgba(63, 32, 9, 0.12);
+  --bg: #edf1f5;
+  --bg-accent: #f8fafc;
+  --card: rgba(255, 255, 255, 0.92);
+  --card-strong: rgba(251, 253, 255, 0.98);
+  --line: rgba(34, 52, 76, 0.12);
+  --text: #182434;
+  --muted: #5e6d81;
+  --brand: #304863;
+  --brand-deep: #1e3147;
+  --brand-soft: rgba(48, 72, 99, 0.1);
+  --ok: #2f6b53;
+  --warn: #8b6a24;
+  --shadow: 0 18px 45px rgba(24, 36, 52, 0.1);
 }
 
 * {
@@ -23,9 +23,9 @@ body {
   font-family: "IBM Plex Sans KR", "Pretendard Variable", sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(196, 81, 45, 0.18), transparent 30%),
-    radial-gradient(circle at top right, rgba(76, 112, 96, 0.14), transparent 25%),
-    linear-gradient(180deg, #f5ebdc 0%, #f8f3ea 42%, #efe6d7 100%);
+    radial-gradient(circle at top left, rgba(48, 72, 99, 0.1), transparent 28%),
+    radial-gradient(circle at top right, rgba(94, 109, 129, 0.08), transparent 22%),
+    linear-gradient(180deg, #eef3f8 0%, #f5f8fb 42%, #e8edf3 100%);
   min-height: 100vh;
 }
 
@@ -39,7 +39,7 @@ code {
   font-family: "Space Grotesk", monospace;
   padding: 0.12em 0.45em;
   border-radius: 999px;
-  background: rgba(123, 47, 23, 0.08);
+  background: rgba(30, 49, 71, 0.08);
   color: var(--brand-deep);
 }
 
@@ -76,7 +76,7 @@ code {
 
 .hero__panel {
   padding: 18px 20px;
-  background: linear-gradient(160deg, rgba(255, 246, 230, 0.94), rgba(244, 228, 208, 0.92));
+  background: linear-gradient(160deg, rgba(247, 250, 253, 0.98), rgba(234, 240, 247, 0.95));
 }
 
 .info-panel {
@@ -144,13 +144,13 @@ h1 {
 .button--primary {
   color: white;
   background: linear-gradient(135deg, var(--brand), var(--brand-deep));
-  box-shadow: 0 16px 28px rgba(123, 47, 23, 0.25);
+  box-shadow: 0 16px 28px rgba(30, 49, 71, 0.24);
 }
 
 .button--ghost {
   color: var(--brand-deep);
-  background: rgba(255, 255, 255, 0.55);
-  border: 1px solid rgba(123, 47, 23, 0.14);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(30, 49, 71, 0.14);
 }
 
 .hero__stats {
@@ -290,7 +290,7 @@ table {
 thead th {
   position: sticky;
   top: 0;
-  background: #f7efe3;
+  background: #e9eff6;
   text-align: left;
   font-size: 0.9rem;
   color: var(--muted);
@@ -324,8 +324,29 @@ tbody tr:last-child td {
   justify-content: center;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(123, 47, 23, 0.08);
+  background: rgba(48, 72, 99, 0.1);
   font-weight: 700;
+}
+
+.rank-badge--gold,
+.rank-badge--silver,
+.rank-badge--bronze {
+  min-width: 40px;
+  font-size: 1.15rem;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.rank-badge--gold {
+  background: rgba(245, 186, 48, 0.18);
+}
+
+.rank-badge--silver {
+  background: rgba(159, 169, 181, 0.18);
+}
+
+.rank-badge--bronze {
+  background: rgba(183, 112, 70, 0.18);
 }
 
 .name-cell {
@@ -339,7 +360,7 @@ tbody tr:last-child td {
   height: 42px;
   border-radius: 14px;
   object-fit: cover;
-  background: rgba(74, 53, 29, 0.1);
+  background: rgba(48, 72, 99, 0.1);
 }
 
 .name-cell strong {
@@ -486,7 +507,7 @@ tbody tr:last-child td {
 .detail-item {
   padding: 10px 12px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(247, 250, 253, 0.92);
   border: 1px solid var(--line);
 }
 

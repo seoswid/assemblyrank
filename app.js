@@ -81,7 +81,7 @@ async function fetchDashboard(options = {}) {
         "좌측 버튼으로 원본 데이터를 업데이트하면 결과 DB도 함께 갱신됩니다.",
         0,
       );
-      elements.rankingBody.innerHTML = `<tr><td colspan="9" class="empty">아직 저장된 랭킹 데이터가 없습니다. "데이터 업데이트"를 눌러 주세요.</td></tr>`;
+      elements.rankingBody.innerHTML = `<tr><td colspan="7" class="empty">아직 저장된 랭킹 데이터가 없습니다. "데이터 업데이트"를 눌러 주세요.</td></tr>`;
       return;
     }
     handleFatalError(error);
@@ -159,7 +159,7 @@ function delay(ms) {
 }
 
 function hydrateDashboard(payload) {
-  state.rankings = payload.rankings || [];
+  state.rankings = (payload.rankings || []).map(normalizeRankingEntry);
   populatePartyFilter(state.rankings);
   elements.assemblyLabel.textContent = payload.meta.assembly_label || "제22대";
   renderRankings();
@@ -169,6 +169,18 @@ function hydrateDashboard(payload) {
     state.selectedKey = state.visibleRankings[0].key;
   }
   renderDetails();
+}
+
+function normalizeRankingEntry(entry) {
+  if (!entry || entry.name !== "용혜인") {
+    return entry;
+  }
+
+  return {
+    ...entry,
+    current_party: "기본소득당",
+    party: "기본소득당",
+  };
 }
 
 function renderRankings() {
@@ -204,18 +216,18 @@ function renderRankings() {
   elements.resultCount.textContent = `${sorted.length.toLocaleString("ko-KR")}명`;
 
   if (sorted.length === 0) {
-    elements.rankingBody.innerHTML = `<tr><td colspan="8" class="empty">조건에 맞는 의원이 없습니다.</td></tr>`;
+    elements.rankingBody.innerHTML = `<tr><td colspan="7" class="empty">조건에 맞는 의원이 없습니다.</td></tr>`;
     renderDetails();
     return;
   }
 
-  elements.rankingBody.innerHTML = sorted.map((entry) => {
+  elements.rankingBody.innerHTML = sorted.map((entry, index) => {
     const selectedClass = entry.key === state.selectedKey ? "is-selected" : "";
     const attendanceClass = entry.attendance_rate >= 90 ? "metric-up" : entry.attendance_rate < 70 ? "metric-warn" : "";
-    const voteParticipationRate = getVoteParticipationRate(entry);
+    const displayRank = index + 1;
     return `
       <tr class="${selectedClass}" data-key="${entry.key}">
-        <td><span class="rank-badge">${entry.rank}</span></td>
+        <td>${renderRankBadge(displayRank)}</td>
         <td>
           <div class="name-cell">
             <img class="avatar" src="${entry.photo_url || ""}" alt="${entry.name}">
@@ -227,7 +239,6 @@ function renderRankings() {
         </td>
         <td>${renderPartyCell(entry)}</td>
         <td class="${attendanceClass}">${formatPercent(entry.attendance_rate)}</td>
-        <td>${formatPercent(voteParticipationRate)}</td>
         <td>${entry.proposal_count.toLocaleString("ko-KR")}건</td>
         <td>${entry.processed_proposal_count.toLocaleString("ko-KR")}건</td>
         <td><strong>${entry.score.toFixed(1)}</strong></td>
@@ -280,8 +291,6 @@ function renderDetails() {
         </div>
       `).join("")
     : `<div class="detail-item"><span>저장된 표결 이력이 없습니다.</span></div>`;
-  const voteParticipationRate = getVoteParticipationRate(selected);
-
   elements.detailCard.innerHTML = `
     <div class="detail-card__header">
       <img class="avatar" src="${selected.photo_url || ""}" alt="${selected.name}">
@@ -301,10 +310,6 @@ function renderDetails() {
       <div class="detail-metric">
         <span>출석률</span>
         <strong>${formatPercent(selected.attendance_rate)}</strong>
-      </div>
-      <div class="detail-metric">
-        <span>표결 참여율</span>
-        <strong>${formatPercent(voteParticipationRate)} (${selected.attended_vote_count.toLocaleString("ko-KR")} / ${selected.total_vote_count.toLocaleString("ko-KR")})</strong>
       </div>
       <div class="detail-metric">
         <span>대표발의</span>
@@ -367,7 +372,6 @@ function renderPartyCell(entry) {
   return `
     <div class="party-cell">
       ${renderPartyVisual(currentParty, "small")}
-      ${renderPartyHistory(entry, "table")}
     </div>
   `;
 }
@@ -496,13 +500,20 @@ function formatPercent(value) {
   return `${Number(value || 0).toFixed(1)}%`;
 }
 
-function getVoteParticipationRate(entry) {
-  const total = Number(entry.total_vote_count || 0);
-  const attended = Number(entry.attended_vote_count || 0);
-  if (!total) {
-    return 0;
+function renderRankBadge(rank) {
+  const rankNumber = Number(rank || 0);
+  const medalMap = {
+    1: { symbol: "🥇", className: "rank-badge rank-badge--gold", label: "1위" },
+    2: { symbol: "🥈", className: "rank-badge rank-badge--silver", label: "2위" },
+    3: { symbol: "🥉", className: "rank-badge rank-badge--bronze", label: "3위" },
+  };
+
+  if (medalMap[rankNumber]) {
+    const medal = medalMap[rankNumber];
+    return `<span class="${medal.className}" aria-label="${medal.label}" title="${medal.label}">${medal.symbol}</span>`;
   }
-  return (attended / total) * 100;
+
+  return `<span class="rank-badge">${rankNumber}</span>`;
 }
 
 function formatVoteDate(value) {
@@ -521,7 +532,7 @@ function updateStatus(message, meta, progress) {
 function handleFatalError(error) {
   console.error(error);
   updateStatus("문제가 발생했습니다.", error.message || "알 수 없는 오류입니다.", 100);
-  elements.rankingBody.innerHTML = `<tr><td colspan="9" class="empty">${error.message || "오류가 발생했습니다."}</td></tr>`;
+  elements.rankingBody.innerHTML = `<tr><td colspan="7" class="empty">${error.message || "오류가 발생했습니다."}</td></tr>`;
   elements.detailCard.innerHTML = `<div class="detail-card__placeholder">오류가 해결되면 다시 시도해 주세요.</div>`;
 }
 

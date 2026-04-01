@@ -90,7 +90,6 @@
                 <th>의원</th>
                 <th>정당</th>
                 <th>출석률</th>
-                <th>표결 참여율</th>
                 <th>대표발의</th>
                 <th>처리의안</th>
                 <th>종합점수</th>
@@ -98,7 +97,7 @@
             </thead>
             <tbody id="rankingBody">
               <tr>
-                <td colspan="8" class="empty">랭킹을 불러오면 결과가 여기에 표시됩니다.</td>
+                <td colspan="7" class="empty">랭킹을 불러오면 결과가 여기에 표시됩니다.</td>
               </tr>
             </tbody>
           </table>
@@ -129,11 +128,7 @@
         </div>
         <div>
           <dt>발의 실적 정의</dt>
-          <dd>의안 API의 <code>PPSR_NM</code> 기준 대표발의 건수를 집계</dd>
-        </div>
-        <div>
-          <dt>저장 방식</dt>
-          <dd>OpenAPI 수집 결과를 로컬 SQLite DB에 저장한 뒤 랭킹을 계산</dd>
+          <dd>의안 API의 대표발의 건수를 집계</dd>
         </div>
       </dl>
     </section>
