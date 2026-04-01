@@ -7,6 +7,7 @@ import os
 import sqlite3
 import socket
 import threading
+import time
 import traceback
 import urllib.parse
 import urllib.request
@@ -36,6 +37,9 @@ DEFAULT_ASSEMBLY_LABEL = f"제{DEFAULT_ASSEMBLY_NUMBER}대"
 PAGE_SIZE = 1000
 VOTE_WORKERS = 4
 PAGE_FETCH_WORKERS = 6
+DEFAULT_API_TIMEOUT = 60
+VOTE_API_TIMEOUT = 15
+VOTE_API_RETRIES = 2
 ATTENDED_RESULTS = {"찬성", "반대", "기권"}
 FALLBACK_API_CONFIG = {
     "key": "fc8d86af691f4f5798f7fe39595d1de9",
@@ -91,7 +95,13 @@ def load_api_config() -> dict[str, str]:
         return FALLBACK_API_CONFIG.copy()
 
 
-def fetch_api_page(endpoint: str, params: dict[str, Any], page_index: int, page_size: int) -> dict[str, Any]:
+def fetch_api_page(
+    endpoint: str,
+    params: dict[str, Any],
+    page_index: int,
+    page_size: int,
+    timeout: int = DEFAULT_API_TIMEOUT,
+) -> dict[str, Any]:
     config = load_api_config()
     query = {
         "KEY": config["key"],
@@ -104,7 +114,7 @@ def fetch_api_page(endpoint: str, params: dict[str, Any], page_index: int, page_
             query[key] = str(value)
     url = f"{endpoint}?{urllib.parse.urlencode(query)}"
     request = urllib.request.Request(url, headers={"User-Agent": "assembly-ranking/1.0"})
-    with urllib.request.urlopen(request, timeout=60) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
     result = payload.get("RESULT")
     if result and result.get("CODE") not in {"INFO-000", "INFO-200"}:
@@ -299,6 +309,7 @@ def sync_database() -> dict[str, Any]:
     pending_vote_bill_ids = [bill_id for bill_id in vote_bill_ids if bill_id not in existing_vote_bill_ids]
 
     vote_rows_by_bill: dict[str, list[dict[str, Any]]] = {}
+    failed_vote_bill_ids: list[str] = []
 
     update_refresh_progress(
         stage="votes",
@@ -310,22 +321,34 @@ def sync_database() -> dict[str, Any]:
         ),
     )
 
-    def fetch_vote_rows(bill_id: str) -> tuple[str, list[dict[str, Any]]]:
-        payload = fetch_api_page(
-            config["vote_url"],
-            {"AGE": DEFAULT_ASSEMBLY_NUMBER, "BILL_ID": bill_id},
-            1,
-            PAGE_SIZE,
-        )
-        return bill_id, extract_rows(payload, "nojepdqqaweusdfbi")
+    def fetch_vote_rows(bill_id: str) -> tuple[str, list[dict[str, Any]], str | None]:
+        last_error: str | None = None
+        for attempt in range(1, VOTE_API_RETRIES + 2):
+            try:
+                payload = fetch_api_page(
+                    config["vote_url"],
+                    {"AGE": DEFAULT_ASSEMBLY_NUMBER, "BILL_ID": bill_id},
+                    1,
+                    PAGE_SIZE,
+                    timeout=VOTE_API_TIMEOUT,
+                )
+                return bill_id, extract_rows(payload, "nojepdqqaweusdfbi"), None
+            except Exception as error:
+                last_error = str(error)
+                if attempt <= VOTE_API_RETRIES:
+                    time.sleep(min(2 * attempt, 5))
+        return bill_id, [], last_error
 
     with ThreadPoolExecutor(max_workers=VOTE_WORKERS) as executor:
         futures = [executor.submit(fetch_vote_rows, bill_id) for bill_id in pending_vote_bill_ids]
         completed_vote_jobs = 0
         total_vote_jobs = len(pending_vote_bill_ids)
         for future in as_completed(futures):
-            bill_id, rows = future.result()
-            vote_rows_by_bill[bill_id] = rows
+            bill_id, rows, error = future.result()
+            if error:
+                failed_vote_bill_ids.append(bill_id)
+            else:
+                vote_rows_by_bill[bill_id] = rows
             completed_vote_jobs += 1
             progress_value = 35
             if total_vote_jobs:
@@ -337,6 +360,7 @@ def sync_database() -> dict[str, Any]:
                 progress_detail=(
                     f"표결 의안 {completed_vote_jobs}/{total_vote_jobs}건 처리 완료, "
                     f"새 표결 행 {sum(len(items) for items in vote_rows_by_bill.values())}건 수집"
+                    f"{f', 재시도 후 보류 {len(failed_vote_bill_ids)}건' if failed_vote_bill_ids else ''}"
                 ),
             )
 
@@ -347,6 +371,7 @@ def sync_database() -> dict[str, Any]:
         progress_detail=(
             f"의원 {len(current_members)}명, 의안 {len(bill_rows)}건, "
             f"신규 표결 의안 {len(vote_rows_by_bill)}건을 저장합니다."
+            f"{f' 보류 {len(failed_vote_bill_ids)}건은 다음 동기화에 다시 시도합니다.' if failed_vote_bill_ids else ''}"
         ),
     )
     with connection:
@@ -458,6 +483,7 @@ def sync_database() -> dict[str, Any]:
             [
                 (bill_id, 1 if vote_rows_by_bill.get(bill_id) else 0, synced_at)
                 for bill_id in pending_vote_bill_ids
+                if bill_id not in failed_vote_bill_ids
             ],
         )
 
@@ -469,6 +495,7 @@ def sync_database() -> dict[str, Any]:
             ("bill_count", str(len(bill_rows))),
             ("vote_row_count", str(vote_row_count)),
             ("new_vote_bill_count", str(len(pending_vote_bill_ids))),
+            ("failed_vote_bill_count", str(len(failed_vote_bill_ids))),
             ("current_member_source_type", "ALLNAMEMBER.DTY_NM"),
             ("page_fetch_workers", str(PAGE_FETCH_WORKERS)),
             ("vote_fetch_workers", str(VOTE_WORKERS)),
@@ -635,6 +662,7 @@ def build_dashboard_payload_from_source() -> dict[str, Any]:
         "member_count": int(metadata.get("member_count", len(rankings))),
         "bill_count": int(metadata.get("bill_count", 0)),
         "vote_row_count": int(metadata.get("vote_row_count", 0)),
+        "failed_vote_bill_count": int(metadata.get("failed_vote_bill_count", 0)),
         "current_member_source_type": metadata.get("current_member_source_type"),
         "database_path": str(DB_PATH),
     }
@@ -723,6 +751,7 @@ def run_refresh_job() -> None:
     )
     try:
         payload = sync_database()
+        deferred_vote_count = payload.get("meta", {}).get("failed_vote_bill_count", 0)
         set_refresh_status(
             status="completed",
             stage="completed",
@@ -732,6 +761,7 @@ def run_refresh_job() -> None:
                 f"의원 {payload.get('meta', {}).get('member_count', 0)}명, "
                 f"의안 {payload.get('meta', {}).get('bill_count', 0)}건, "
                 f"표결 {payload.get('meta', {}).get('vote_row_count', 0)}건"
+                f"{f', 보류 표결 의안 {deferred_vote_count}건' if deferred_vote_count else ''}"
             ),
             finished_at=datetime.now().isoformat(timespec="seconds"),
             last_synced_at=payload.get("meta", {}).get("last_synced_at"),
