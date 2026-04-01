@@ -506,6 +506,29 @@ tbody tr:last-child td {
   color: var(--brand-deep);
 }
 
+.contact-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+
+.contact-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contact-link--muted {
+  color: var(--muted);
+}
+
+.contact-link__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  fill: currentColor;
+}
+
 @media (max-width: 1120px) {
   .hero,
   .content-grid,

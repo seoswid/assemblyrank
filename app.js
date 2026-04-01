@@ -329,7 +329,10 @@ function renderDetails() {
         </div>
         <div class="detail-item">
           <strong>연락처</strong>
-          <span>${selected.phone || "-"} · ${selected.email || "-"}</span>
+          <div class="contact-links">
+            ${renderContactLink("phone", selected.phone)}
+            ${renderContactLink("email", selected.email)}
+          </div>
         </div>
         <div class="detail-item">
           <strong>홈페이지</strong>
@@ -367,6 +370,37 @@ function renderPartyCell(entry) {
       ${renderPartyHistory(entry, "table")}
     </div>
   `;
+}
+
+function renderContactLink(type, value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return `<span class="contact-link contact-link--muted">${type === "phone" ? renderInlineIcon("phone") : renderInlineIcon("email")}<span>-</span></span>`;
+  }
+
+  if (type === "phone") {
+    const phoneHref = `tel:${text.replace(/[^+\d]/g, "")}`;
+    return `<a class="contact-link" href="${phoneHref}">${renderInlineIcon("phone")}<span>${text}</span></a>`;
+  }
+
+  const emailHref = `mailto:${text}`;
+  return `<a class="contact-link" href="${emailHref}">${renderInlineIcon("email")}<span>${text}</span></a>`;
+}
+
+function renderInlineIcon(type) {
+  if (type === "phone") {
+    return `
+      <svg class="contact-link__icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6.6 10.8a15.6 15.6 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.24 11.2 11.2 0 0 0 3.5.56 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1C10.6 21 3 13.4 3 4a1 1 0 0 1 1-1h3.3a1 1 0 0 1 1 1 11.2 11.2 0 0 0 .56 3.5 1 1 0 0 1-.24 1z"/>
+      </svg>
+    `.trim();
+  }
+
+  return `
+    <svg class="contact-link__icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm0 2v.2l8 5.33 8-5.33V7H4zm16 10V9.6l-7.45 4.96a1 1 0 0 1-1.1 0L4 9.6V17h16z"/>
+    </svg>
+  `.trim();
 }
 
 function renderDistrictCell(entry) {
