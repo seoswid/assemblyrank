@@ -132,9 +132,9 @@ async function waitForRefreshCompletion(initialStatus) {
     }
 
     updateStatus(
-      "원본 데이터를 업데이트하는 중입니다.",
-      "열린국회 OpenAPI에서 데이터를 수집 중입니다. 첫 실행은 몇 분 정도 걸릴 수 있습니다.",
-      50,
+      statusPayload.message || "원본 데이터를 업데이트하는 중입니다.",
+      statusPayload.progress_detail || "열린국회 OpenAPI에서 데이터를 수집 중입니다. 첫 실행은 몇 분 정도 걸릴 수 있습니다.",
+      Number(statusPayload.progress || 50),
     );
 
     await delay(5000);

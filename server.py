@@ -57,6 +57,10 @@ refresh_job_state: dict[str, Any] = {
 def default_refresh_status() -> dict[str, Any]:
     return {
         "status": "idle",
+        "stage": "idle",
+        "message": "대기 중입니다.",
+        "progress": 0,
+        "progress_detail": None,
         "started_at": None,
         "finished_at": None,
         "error": None,
@@ -252,6 +256,12 @@ def sync_database() -> dict[str, Any]:
     connection.row_factory = sqlite3.Row
     init_db(connection)
 
+    update_refresh_progress(
+        stage="members",
+        message="국회의원 기본 정보를 수집하는 중입니다.",
+        progress=8,
+        progress_detail="열린국회 의원 목록을 조회하고 있습니다.",
+    )
     member_rows = fetch_all_pages(config["member_url"], "ALLNAMEMBER", {})
     current_members = [
         row
@@ -260,6 +270,12 @@ def sync_database() -> dict[str, Any]:
         and row.get("DTY_NM")
     ]
 
+    update_refresh_progress(
+        stage="bills",
+        message="의안 정보를 수집하는 중입니다.",
+        progress=20,
+        progress_detail=f"현역 의원 {len(current_members)}명을 기준으로 의안 목록을 정리하고 있습니다.",
+    )
     raw_bill_rows = fetch_all_pages(
         config["bill_url"],
         "ALLBILLV2",
@@ -284,6 +300,16 @@ def sync_database() -> dict[str, Any]:
 
     vote_rows_by_bill: dict[str, list[dict[str, Any]]] = {}
 
+    update_refresh_progress(
+        stage="votes",
+        message="표결 정보를 수집하는 중입니다.",
+        progress=35,
+        progress_detail=(
+            f"전체 표결 대상 의안 {len(vote_bill_ids)}건 중 "
+            f"새로 수집할 {len(pending_vote_bill_ids)}건을 처리합니다."
+        ),
+    )
+
     def fetch_vote_rows(bill_id: str) -> tuple[str, list[dict[str, Any]]]:
         payload = fetch_api_page(
             config["vote_url"],
@@ -295,10 +321,34 @@ def sync_database() -> dict[str, Any]:
 
     with ThreadPoolExecutor(max_workers=VOTE_WORKERS) as executor:
         futures = [executor.submit(fetch_vote_rows, bill_id) for bill_id in pending_vote_bill_ids]
+        completed_vote_jobs = 0
+        total_vote_jobs = len(pending_vote_bill_ids)
         for future in as_completed(futures):
             bill_id, rows = future.result()
             vote_rows_by_bill[bill_id] = rows
+            completed_vote_jobs += 1
+            progress_value = 35
+            if total_vote_jobs:
+                progress_value = 35 + int((completed_vote_jobs / total_vote_jobs) * 35)
+            update_refresh_progress(
+                stage="votes",
+                message="표결 정보를 수집하는 중입니다.",
+                progress=progress_value,
+                progress_detail=(
+                    f"표결 의안 {completed_vote_jobs}/{total_vote_jobs}건 처리 완료, "
+                    f"새 표결 행 {sum(len(items) for items in vote_rows_by_bill.values())}건 수집"
+                ),
+            )
 
+    update_refresh_progress(
+        stage="database",
+        message="수집한 데이터를 데이터베이스에 저장하는 중입니다.",
+        progress=74,
+        progress_detail=(
+            f"의원 {len(current_members)}명, 의안 {len(bill_rows)}건, "
+            f"신규 표결 의안 {len(vote_rows_by_bill)}건을 저장합니다."
+        ),
+    )
     with connection:
         connection.executemany(
             """
@@ -429,8 +479,20 @@ def sync_database() -> dict[str, Any]:
         )
 
     connection.close()
+    update_refresh_progress(
+        stage="ranking",
+        message="랭킹 결과 데이터베이스를 생성하는 중입니다.",
+        progress=90,
+        progress_detail="저장된 원본 데이터를 바탕으로 결과 DB를 갱신하고 있습니다.",
+    )
     payload = build_dashboard_payload_from_source()
     save_dashboard_payload_to_result_db(payload)
+    update_refresh_progress(
+        stage="ranking",
+        message="랭킹 결과 데이터베이스를 생성하는 중입니다.",
+        progress=97,
+        progress_detail="결과 DB 저장이 거의 완료되었습니다.",
+    )
     return payload
 
 
@@ -631,9 +693,30 @@ def set_refresh_status(**updates: Any) -> None:
         )
 
 
+def update_refresh_progress(
+    *,
+    stage: str,
+    message: str,
+    progress: int,
+    progress_detail: str | None = None,
+    **extra: Any,
+) -> None:
+    set_refresh_status(
+        stage=stage,
+        message=message,
+        progress=max(0, min(100, progress)),
+        progress_detail=progress_detail,
+        **extra,
+    )
+
+
 def run_refresh_job() -> None:
     set_refresh_status(
         status="running",
+        stage="preparing",
+        message="동기화를 준비하는 중입니다.",
+        progress=2,
+        progress_detail="초기 설정을 확인하고 있습니다.",
         started_at=datetime.now().isoformat(timespec="seconds"),
         finished_at=None,
         error=None,
@@ -642,6 +725,14 @@ def run_refresh_job() -> None:
         payload = sync_database()
         set_refresh_status(
             status="completed",
+            stage="completed",
+            message="데이터 동기화가 완료되었습니다.",
+            progress=100,
+            progress_detail=(
+                f"의원 {payload.get('meta', {}).get('member_count', 0)}명, "
+                f"의안 {payload.get('meta', {}).get('bill_count', 0)}건, "
+                f"표결 {payload.get('meta', {}).get('vote_row_count', 0)}건"
+            ),
             finished_at=datetime.now().isoformat(timespec="seconds"),
             last_synced_at=payload.get("meta", {}).get("last_synced_at"),
             error=None,
@@ -651,6 +742,8 @@ def run_refresh_job() -> None:
         traceback.print_exc()
         set_refresh_status(
             status="failed",
+            stage="failed",
+            message="데이터 동기화 중 오류가 발생했습니다.",
             finished_at=datetime.now().isoformat(timespec="seconds"),
             error=str(error),
         )
@@ -662,6 +755,10 @@ def start_refresh_job() -> dict[str, Any]:
         return current_status
     set_refresh_status(
         status="queued",
+        stage="queued",
+        message="동기화 작업을 대기열에 등록했습니다.",
+        progress=1,
+        progress_detail="잠시 후 수집을 시작합니다.",
         started_at=datetime.now().isoformat(timespec="seconds"),
         finished_at=None,
         error=None,
