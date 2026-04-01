@@ -319,10 +319,6 @@ function renderDetails() {
         <span>처리의안</span>
         <strong>${selected.processed_proposal_count.toLocaleString("ko-KR")}건</strong>
       </div>
-      <div class="detail-metric">
-        <span>표결 성향</span>
-        <strong>찬성 ${selected.yes_count} · 반대 ${selected.no_count} · 기권 ${selected.abstain_count} · 불참 ${selected.absent_count}</strong>
-      </div>
     </div>
 
     <div class="detail-section">
