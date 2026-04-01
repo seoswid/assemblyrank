@@ -29,6 +29,7 @@ DATA_DIR = Path(
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "assembly_rankings.db"
 RESULT_DB_PATH = DATA_DIR / "assembly_rankings_result.db"
+REFRESH_STATUS_PATH = DATA_DIR / "refresh_status.json"
 API_URL_PATH = BASE_DIR / "API_URL.txt"
 DEFAULT_ASSEMBLY_NUMBER = 22
 DEFAULT_ASSEMBLY_LABEL = f"제{DEFAULT_ASSEMBLY_NUMBER}대"
@@ -51,6 +52,16 @@ refresh_job_state: dict[str, Any] = {
     "error": None,
     "last_synced_at": None,
 }
+
+
+def default_refresh_status() -> dict[str, Any]:
+    return {
+        "status": "idle",
+        "started_at": None,
+        "finished_at": None,
+        "error": None,
+        "last_synced_at": None,
+    }
 
 
 def load_api_config() -> dict[str, str]:
@@ -603,12 +614,21 @@ def build_dashboard_payload() -> dict[str, Any]:
 
 def get_refresh_status() -> dict[str, Any]:
     with refresh_job_lock:
+        if REFRESH_STATUS_PATH.exists():
+            try:
+                return {**default_refresh_status(), **json.loads(REFRESH_STATUS_PATH.read_text(encoding="utf-8"))}
+            except Exception:
+                pass
         return dict(refresh_job_state)
 
 
 def set_refresh_status(**updates: Any) -> None:
     with refresh_job_lock:
         refresh_job_state.update(updates)
+        REFRESH_STATUS_PATH.write_text(
+            json.dumps(refresh_job_state, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
 
 def run_refresh_job() -> None:
@@ -637,18 +657,15 @@ def run_refresh_job() -> None:
 
 
 def start_refresh_job() -> dict[str, Any]:
-    with refresh_job_lock:
-        if refresh_job_state.get("status") == "running":
-            return dict(refresh_job_state)
-        refresh_job_state.update(
-            {
-                "status": "queued",
-                "started_at": datetime.now().isoformat(timespec="seconds"),
-                "finished_at": None,
-                "error": None,
-            }
-        )
-
+    current_status = get_refresh_status()
+    if current_status.get("status") == "running":
+        return current_status
+    set_refresh_status(
+        status="queued",
+        started_at=datetime.now().isoformat(timespec="seconds"),
+        finished_at=None,
+        error=None,
+    )
     threading.Thread(target=run_refresh_job, daemon=True).start()
     return get_refresh_status()
 
