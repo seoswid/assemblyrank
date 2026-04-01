@@ -281,6 +281,12 @@ h1 {
   border: 1px solid var(--line);
 }
 
+.table-card__more {
+  display: flex;
+  justify-content: center;
+  margin-top: 12px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

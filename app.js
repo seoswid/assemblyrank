@@ -4,6 +4,7 @@ const state = {
   selectedKey: null,
   loading: false,
   detailLoadingKeys: {},
+  showAllRankings: false,
 };
 
 const PARTY_LOGO_STYLES = {
@@ -34,6 +35,7 @@ const elements = {
   statusMeta: document.querySelector("#statusMeta"),
   resultCount: document.querySelector("#resultCount"),
   assemblyLabel: document.querySelector("#assemblyLabel"),
+  showMoreButton: document.querySelector("#showMoreButton"),
 };
 
 wireEvents();
@@ -45,6 +47,10 @@ function wireEvents() {
   elements.searchInput.addEventListener("input", renderRankings);
   elements.partyFilter.addEventListener("change", renderRankings);
   elements.sortSelect.addEventListener("change", renderRankings);
+  elements.showMoreButton?.addEventListener("click", () => {
+    state.showAllRankings = true;
+    renderRankings();
+  });
 }
 
 async function boot() {
@@ -162,6 +168,7 @@ function delay(ms) {
 async function hydrateDashboard(payload) {
   state.rankings = (payload.rankings || []).map(normalizeRankingEntry);
   state.detailLoadingKeys = {};
+  state.showAllRankings = false;
   populatePartyFilter(state.rankings);
   elements.assemblyLabel.textContent = payload.meta.assembly_label || "제22대";
   renderRankings();
@@ -223,6 +230,7 @@ function renderRankings() {
   const query = elements.searchInput.value.trim().toLowerCase();
   const selectedParty = elements.partyFilter.value;
   const sortKey = elements.sortSelect.value;
+  const initialLimit = 20;
 
   const filtered = state.rankings.filter((entry) => {
     const haystack = [
@@ -243,21 +251,31 @@ function renderRankings() {
   });
 
   const sorted = [...filtered].sort((left, right) => compareRanking(left, right, sortKey));
-  state.visibleRankings = sorted;
+  const renderedRankings = state.showAllRankings ? sorted : sorted.slice(0, initialLimit);
+  state.visibleRankings = renderedRankings;
 
-  if (!sorted.some((entry) => entry.key === state.selectedKey) && sorted[0]) {
+  if (!renderedRankings.some((entry) => entry.key === state.selectedKey) && renderedRankings[0]) {
+    state.selectedKey = renderedRankings[0].key;
+  } else if (!renderedRankings.length && sorted[0]) {
     state.selectedKey = sorted[0].key;
   }
 
-  elements.resultCount.textContent = `${sorted.length.toLocaleString("ko-KR")}명`;
+  if (sorted.length > initialLimit && !state.showAllRankings) {
+    elements.resultCount.textContent = `전체 ${sorted.length.toLocaleString("ko-KR")}명 중 ${initialLimit.toLocaleString("ko-KR")}명 표시`;
+  } else {
+    elements.resultCount.textContent = `${sorted.length.toLocaleString("ko-KR")}명`;
+  }
 
   if (sorted.length === 0) {
     elements.rankingBody.innerHTML = `<tr><td colspan="7" class="empty">조건에 맞는 의원이 없습니다.</td></tr>`;
+    if (elements.showMoreButton) {
+      elements.showMoreButton.hidden = true;
+    }
     renderDetails();
     return;
   }
 
-  elements.rankingBody.innerHTML = sorted.map((entry, index) => {
+  elements.rankingBody.innerHTML = renderedRankings.map((entry, index) => {
     const selectedClass = entry.key === state.selectedKey ? "is-selected" : "";
     const attendanceClass = entry.attendance_rate >= 90 ? "metric-up" : entry.attendance_rate < 70 ? "metric-warn" : "";
     const displayRank = index + 1;
@@ -290,6 +308,10 @@ function renderRankings() {
       renderDetails();
     });
   });
+
+  if (elements.showMoreButton) {
+    elements.showMoreButton.hidden = sorted.length <= initialLimit || state.showAllRankings;
+  }
 }
 
 function renderSummary(summary) {
