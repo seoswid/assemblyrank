@@ -18,7 +18,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, jsonify, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -30,8 +30,10 @@ DATA_DIR = Path(
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "assembly_rankings.db"
 RESULT_DB_PATH = DATA_DIR / "assembly_rankings_result.db"
+RESULT_DB_UPLOAD_PATH = DATA_DIR / "assembly_rankings_result.uploading.db"
 REFRESH_STATUS_PATH = DATA_DIR / "refresh_status.json"
 API_URL_PATH = BASE_DIR / "API_URL.txt"
+ADMIN_UPLOAD_TOKEN = os.environ.get("ADMIN_UPLOAD_TOKEN", "").strip()
 DEFAULT_ASSEMBLY_NUMBER = 22
 DEFAULT_ASSEMBLY_LABEL = f"제{DEFAULT_ASSEMBLY_NUMBER}대"
 PAGE_SIZE = 1000
@@ -685,6 +687,23 @@ def save_dashboard_payload_to_result_db(payload: dict[str, Any]) -> None:
     connection.close()
 
 
+def validate_result_db_file(path: Path) -> None:
+    connection = sqlite3.connect(path)
+    connection.row_factory = sqlite3.Row
+    try:
+        init_result_db(connection)
+        cached = connection.execute(
+            "SELECT payload_json FROM dashboard_cache WHERE id = 1"
+        ).fetchone()
+        if not cached:
+            raise ValueError("dashboard_cache 데이터가 없습니다.")
+        payload = json.loads(cached["payload_json"])
+        if "meta" not in payload or "rankings" not in payload:
+            raise ValueError("결과 DB payload 형식이 올바르지 않습니다.")
+    finally:
+        connection.close()
+
+
 def build_dashboard_payload() -> dict[str, Any]:
     result_connection = sqlite3.connect(RESULT_DB_PATH)
     result_connection.row_factory = sqlite3.Row
@@ -1005,6 +1024,39 @@ def flask_rebuild_result_db() -> Response:
         print(f"Request failed: POST /api/rebuild-result-db -> {error}", flush=True)
         traceback.print_exc()
         return jsonify({"error": str(error)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.post("/api/admin/upload-result-db")
+def flask_upload_result_db() -> Response:
+    if not ADMIN_UPLOAD_TOKEN:
+        return jsonify({"error": "ADMIN_UPLOAD_TOKEN 이 설정되지 않았습니다."}), HTTPStatus.FORBIDDEN
+
+    provided_token = request.headers.get("X-Admin-Token", "").strip()
+    if provided_token != ADMIN_UPLOAD_TOKEN:
+        return jsonify({"error": "업로드 인증에 실패했습니다."}), HTTPStatus.UNAUTHORIZED
+
+    raw_bytes = request.get_data(cache=False)
+    if not raw_bytes:
+        return jsonify({"error": "업로드할 DB 파일 내용이 비어 있습니다."}), HTTPStatus.BAD_REQUEST
+
+    try:
+        RESULT_DB_UPLOAD_PATH.write_bytes(raw_bytes)
+        validate_result_db_file(RESULT_DB_UPLOAD_PATH)
+        RESULT_DB_UPLOAD_PATH.replace(RESULT_DB_PATH)
+        payload = build_dashboard_payload()
+        return jsonify(
+            {
+                "ok": True,
+                "message": "결과 DB 업로드가 완료되었습니다.",
+                "meta": payload.get("meta", {}),
+            }
+        )
+    except Exception as error:
+        if RESULT_DB_UPLOAD_PATH.exists():
+            RESULT_DB_UPLOAD_PATH.unlink(missing_ok=True)
+        print(f"Result DB upload failed: {error}", flush=True)
+        traceback.print_exc()
+        return jsonify({"error": str(error)}), HTTPStatus.BAD_REQUEST
 
 
 @app.get("/<path:asset_path>")
