@@ -3,6 +3,7 @@ const state = {
   visibleRankings: [],
   selectedKey: null,
   loading: false,
+  detailLoadingKeys: {},
 };
 
 const PARTY_LOGO_STYLES = {
@@ -68,7 +69,7 @@ async function fetchDashboard(options = {}) {
       throw new Error(payload.error || "대시보드 데이터를 읽지 못했습니다.");
     }
 
-    hydrateDashboard(payload);
+    await hydrateDashboard(payload);
     updateStatus(
       "",
       `데이터 동기화 시간: ${payload.meta.last_synced_at || "없음"}`,
@@ -158,8 +159,9 @@ function delay(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-function hydrateDashboard(payload) {
+async function hydrateDashboard(payload) {
   state.rankings = (payload.rankings || []).map(normalizeRankingEntry);
+  state.detailLoadingKeys = {};
   populatePartyFilter(state.rankings);
   elements.assemblyLabel.textContent = payload.meta.assembly_label || "제22대";
   renderRankings();
@@ -168,7 +170,41 @@ function hydrateDashboard(payload) {
   if (!state.selectedKey && state.visibleRankings[0]) {
     state.selectedKey = state.visibleRankings[0].key;
   }
+  if (state.selectedKey) {
+    await loadMemberDetail(state.selectedKey);
+  }
   renderDetails();
+}
+
+async function loadMemberDetail(memberKey) {
+  if (!memberKey || state.detailLoadingKeys[memberKey]) {
+    return;
+  }
+
+  const target = state.rankings.find((entry) => entry.key === memberKey);
+  if (!target) {
+    return;
+  }
+  if (Array.isArray(target.latest_proposals) && Array.isArray(target.latest_votes)) {
+    return;
+  }
+
+  state.detailLoadingKeys[memberKey] = true;
+  try {
+    const response = await fetch(`/api/member-detail/${encodeURIComponent(memberKey)}`);
+    const payload = await readJsonResponse(response);
+    if (!response.ok) {
+      throw new Error(payload.error || "?곸꽭 ?뺣낫瑜?遺덈윭?ㅼ? 紐삵뻽?듬땲??");
+    }
+    target.latest_proposals = payload.latest_proposals || [];
+    target.latest_votes = payload.latest_votes || [];
+  } catch (error) {
+    console.error(error);
+    target.latest_proposals = [];
+    target.latest_votes = [];
+  } finally {
+    delete state.detailLoadingKeys[memberKey];
+  }
 }
 
 function normalizeRankingEntry(entry) {
@@ -247,9 +283,10 @@ function renderRankings() {
   }).join("");
 
   [...elements.rankingBody.querySelectorAll("tr[data-key]")].forEach((row) => {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", async () => {
       state.selectedKey = row.dataset.key;
       renderRankings();
+      await loadMemberDetail(state.selectedKey);
       renderDetails();
     });
   });
@@ -271,7 +308,7 @@ function renderDetails() {
     return;
   }
 
-  const proposals = selected.latest_proposals?.length
+  const proposals = Array.isArray(selected.latest_proposals)
     ? selected.latest_proposals.map((item) => `
         <div class="detail-item">
           <strong>${item.bill_name}</strong>
@@ -282,7 +319,7 @@ function renderDetails() {
       `).join("")
     : `<div class="detail-item"><span>저장된 대표발의 이력이 없습니다.</span></div>`;
 
-  const votes = selected.latest_votes?.length
+  const votes = Array.isArray(selected.latest_votes)
     ? selected.latest_votes.map((item) => `
         <div class="detail-item">
           <strong>${item.bill_name}</strong>

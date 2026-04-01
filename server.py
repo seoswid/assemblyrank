@@ -18,7 +18,38 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, jsonify, request, send_from_directory
+try:
+    from flask import Flask, Response, jsonify, request, send_from_directory
+except ImportError:
+    class _DummyFlask:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            pass
+
+        def get(self, *args: Any, **kwargs: Any):
+            def decorator(func):
+                return func
+            return decorator
+
+        def post(self, *args: Any, **kwargs: Any):
+            def decorator(func):
+                return func
+            return decorator
+
+        def run(self, *args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("Flask is not installed. Web server mode is unavailable.")
+
+    class _DummyRequest:
+        headers: dict[str, str] = {}
+
+        @staticmethod
+        def get_data(cache: bool = False) -> bytes:
+            return b""
+
+    Flask = _DummyFlask
+    Response = Any
+    jsonify = lambda payload=None, *args, **kwargs: payload
+    request = _DummyRequest()
+    send_from_directory = lambda *args, **kwargs: None
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -254,6 +285,12 @@ def init_result_db(connection: sqlite3.Connection) -> None:
         """
         CREATE TABLE IF NOT EXISTS dashboard_cache (
             id INTEGER PRIMARY KEY CHECK (id = 1),
+            payload_json TEXT NOT NULL,
+            generated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS member_detail_cache (
+            member_key TEXT PRIMARY KEY,
             payload_json TEXT NOT NULL,
             generated_at TEXT NOT NULL
         );
@@ -514,8 +551,8 @@ def sync_database() -> dict[str, Any]:
         progress=90,
         progress_detail="저장된 원본 데이터를 바탕으로 결과 DB를 갱신하고 있습니다.",
     )
-    payload = build_dashboard_payload_from_source()
-    save_dashboard_payload_to_result_db(payload)
+    payload, member_details = build_dashboard_bundle_from_source()
+    save_dashboard_payload_to_result_db(payload, member_details)
     update_refresh_progress(
         stage="ranking",
         message="랭킹 결과 데이터베이스를 생성하는 중입니다.",
@@ -550,7 +587,19 @@ def prune_stale_rows(
     )
 
 
-def build_dashboard_payload_from_source() -> dict[str, Any]:
+def build_member_detail_payload_from_row(
+    connection: sqlite3.Connection,
+    member_key: str,
+    member_name: str,
+) -> dict[str, Any]:
+    return {
+        "key": member_key,
+        "latest_proposals": latest_proposals(connection, member_key),
+        "latest_votes": latest_votes(connection, member_name),
+    }
+
+
+def build_dashboard_bundle_from_source() -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
     init_db(connection)
@@ -603,6 +652,7 @@ def build_dashboard_payload_from_source() -> dict[str, Any]:
     max_processed = max((proposal_map.get(member["naas_cd"], {}).get("processed_proposal_count", 0) for member in members), default=0)
 
     rankings: list[dict[str, Any]] = []
+    member_details: dict[str, dict[str, Any]] = {}
     for member in members:
         proposals = proposal_map.get(member["naas_cd"], {})
         votes = vote_map.get(member["naas_cd"], {})
@@ -614,6 +664,11 @@ def build_dashboard_payload_from_source() -> dict[str, Any]:
         proposal_score = (proposal_count / max_proposal * 100) if max_proposal else 0
         processed_score = (processed_proposal_count / max_processed * 100) if max_processed else 0
         score = (attendance_rate * 0.65) + (proposal_score * 0.25) + (processed_score * 0.1)
+        member_details[member["naas_cd"]] = build_member_detail_payload_from_row(
+            connection,
+            member["naas_cd"],
+            member["name"],
+        )
         rankings.append(
             {
                 "key": member["naas_cd"],
@@ -640,8 +695,6 @@ def build_dashboard_payload_from_source() -> dict[str, Any]:
                 "abstain_count": int(votes.get("abstain_count", 0) or 0),
                 "absent_count": int(votes.get("absent_count", 0) or 0),
                 "score": round(score, 2),
-                "latest_proposals": latest_proposals(connection, member["naas_cd"]),
-                "latest_votes": latest_votes(connection, member["name"]),
             }
         )
 
@@ -669,10 +722,18 @@ def build_dashboard_payload_from_source() -> dict[str, Any]:
         "database_path": str(DB_PATH),
     }
     connection.close()
-    return {"meta": meta, "summary": summary, "rankings": rankings}
+    return {"meta": meta, "summary": summary, "rankings": rankings}, member_details
 
 
-def save_dashboard_payload_to_result_db(payload: dict[str, Any]) -> None:
+def build_dashboard_payload_from_source() -> dict[str, Any]:
+    payload, _ = build_dashboard_bundle_from_source()
+    return payload
+
+
+def save_dashboard_payload_to_result_db(
+    payload: dict[str, Any],
+    member_details: dict[str, dict[str, Any]] | None = None,
+) -> None:
     connection = sqlite3.connect(RESULT_DB_PATH)
     init_result_db(connection)
     generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -684,6 +745,22 @@ def save_dashboard_payload_to_result_db(payload: dict[str, Any]) -> None:
             """,
             (json.dumps(payload, ensure_ascii=False), generated_at),
         )
+        if member_details is not None:
+            connection.execute("DELETE FROM member_detail_cache")
+            connection.executemany(
+                """
+                INSERT OR REPLACE INTO member_detail_cache (member_key, payload_json, generated_at)
+                VALUES (?, ?, ?)
+                """,
+                [
+                    (
+                        member_key,
+                        json.dumps(detail_payload, ensure_ascii=False),
+                        generated_at,
+                    )
+                    for member_key, detail_payload in member_details.items()
+                ],
+            )
     connection.close()
 
 
@@ -716,8 +793,63 @@ def build_dashboard_payload() -> dict[str, Any]:
     if cached:
         return json.loads(cached["payload_json"])
 
-    payload = build_dashboard_payload_from_source()
-    save_dashboard_payload_to_result_db(payload)
+    payload, member_details = build_dashboard_bundle_from_source()
+    save_dashboard_payload_to_result_db(payload, member_details)
+    return payload
+
+
+def build_member_detail_payload(member_key: str) -> dict[str, Any]:
+    result_connection = sqlite3.connect(RESULT_DB_PATH)
+    result_connection.row_factory = sqlite3.Row
+    init_result_db(result_connection)
+    cached = result_connection.execute(
+        "SELECT payload_json FROM member_detail_cache WHERE member_key = ?",
+        (member_key,),
+    ).fetchone()
+
+    if cached:
+        result_connection.close()
+        return json.loads(cached["payload_json"])
+
+    dashboard_cached = result_connection.execute(
+        "SELECT payload_json FROM dashboard_cache WHERE id = 1"
+    ).fetchone()
+    result_connection.close()
+    if dashboard_cached:
+        payload = json.loads(dashboard_cached["payload_json"])
+        matched = next(
+            (
+                item for item in payload.get("rankings", [])
+                if item.get("key") == member_key
+            ),
+            None,
+        )
+        if matched and (
+            "latest_proposals" in matched or "latest_votes" in matched
+        ):
+            return {
+                "key": member_key,
+                "latest_proposals": matched.get("latest_proposals", []),
+                "latest_votes": matched.get("latest_votes", []),
+            }
+
+    source_connection = sqlite3.connect(DB_PATH)
+    source_connection.row_factory = sqlite3.Row
+    init_db(source_connection)
+    member = source_connection.execute(
+        "SELECT naas_cd, name FROM members WHERE naas_cd = ?",
+        (member_key,),
+    ).fetchone()
+    if not member:
+        source_connection.close()
+        raise FileNotFoundError("의원 상세 데이터를 찾을 수 없습니다.")
+
+    payload = build_member_detail_payload_from_row(
+        source_connection,
+        member["naas_cd"],
+        member["name"],
+    )
+    source_connection.close()
     return payload
 
 
@@ -1017,11 +1149,23 @@ def flask_refresh_status() -> Response:
 @app.post("/api/rebuild-result-db")
 def flask_rebuild_result_db() -> Response:
     try:
-        payload = build_dashboard_payload_from_source()
-        save_dashboard_payload_to_result_db(payload)
+        payload, member_details = build_dashboard_bundle_from_source()
+        save_dashboard_payload_to_result_db(payload, member_details)
         return jsonify(payload)
     except Exception as error:
         print(f"Request failed: POST /api/rebuild-result-db -> {error}", flush=True)
+        traceback.print_exc()
+        return jsonify({"error": str(error)}), HTTPStatus.INTERNAL_SERVER_ERROR
+
+
+@app.get("/api/member-detail/<member_key>")
+def flask_member_detail(member_key: str) -> Response:
+    try:
+        return jsonify(build_member_detail_payload(member_key))
+    except FileNotFoundError as error:
+        return jsonify({"error": str(error)}), HTTPStatus.NOT_FOUND
+    except Exception as error:
+        print(f"Request failed: GET /api/member-detail/{member_key} -> {error}", flush=True)
         traceback.print_exc()
         return jsonify({"error": str(error)}), HTTPStatus.INTERNAL_SERVER_ERROR
 
