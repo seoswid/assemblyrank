@@ -5,6 +5,7 @@ const state = {
   loading: false,
   detailLoadingKeys: {},
   showAllRankings: false,
+  statusDelayTimer: null,
 };
 
 const PARTY_LOGO_STYLES = {
@@ -65,7 +66,11 @@ async function boot() {
     return;
   }
 
-  updateStatus("데이터베이스 연결을 준비하는 중입니다.", "로컬 서버 API를 확인합니다.", 8);
+  showDelayedStatus(
+    "데이터베이스 연결을 준비하는 중입니다.",
+    "로컬 서버 API를 확인합니다.",
+    250,
+  );
   await fetchDashboard({ silentNotReady: true });
 }
 
@@ -78,7 +83,11 @@ async function fetchDashboard(options = {}) {
   setButtonsDisabled(true);
 
   try {
-    updateStatus("SQLite 데이터베이스에서 랭킹을 읽는 중입니다.", "저장된 최신 집계 결과를 불러옵니다.", 22);
+    showDelayedStatus(
+      "SQLite 데이터베이스에서 랭킹을 읽는 중입니다.",
+      "저장된 최신 집계 결과를 불러옵니다.",
+      250,
+    );
     const response = await fetch("/api/dashboard");
     const payload = await readJsonResponse(response);
 
@@ -591,8 +600,22 @@ function formatVoteDate(value) {
 }
 
 function updateStatus(message, meta, progress) {
+  if (state.statusDelayTimer) {
+    window.clearTimeout(state.statusDelayTimer);
+    state.statusDelayTimer = null;
+  }
   elements.statusMessage.textContent = message;
   elements.statusMeta.textContent = meta;
+}
+
+function showDelayedStatus(message, meta, delay = 250) {
+  if (state.statusDelayTimer) {
+    window.clearTimeout(state.statusDelayTimer);
+  }
+  state.statusDelayTimer = window.setTimeout(() => {
+    state.statusDelayTimer = null;
+    updateStatus(message, meta);
+  }, delay);
 }
 
 function handleFatalError(error) {
