@@ -573,3 +573,99 @@ function setButtonsDisabled(disabled) {
   elements.loadButton.disabled = disabled;
   elements.refreshVotesButton.disabled = disabled;
 }
+
+function renderDetails() {
+  const selected = state.visibleRankings.find((entry) => entry.key === state.selectedKey)
+    || state.rankings.find((entry) => entry.key === state.selectedKey);
+
+  if (!selected) {
+    elements.detailCard.innerHTML = `<div class="detail-card__placeholder">목록에서 의원을 선택하면 상세 정보가 표시됩니다.</div>`;
+    return;
+  }
+
+  const proposals = !Array.isArray(selected.latest_proposals)
+    ? `<div class="detail-item"><span>상세 이력을 불러오는 중입니다.</span></div>`
+    : selected.latest_proposals.length === 0
+      ? `<div class="detail-item"><span>저장된 대표발의 이력이 없습니다.</span></div>`
+      : selected.latest_proposals.map((item) => `
+          <div class="detail-item">
+            <strong>${item.link_url ? `<a href="${item.link_url}" target="_blank" rel="noreferrer">${item.bill_name}</a>` : item.bill_name}</strong>
+            <span>의안번호 ${item.bill_no || "-"} · 제안일 ${item.proposed_date || "-"}</span>
+            <span>상태 ${item.result || "-"}</span>
+          </div>
+        `).join("");
+
+  const votes = !Array.isArray(selected.latest_votes)
+    ? `<div class="detail-item"><span>상세 이력을 불러오는 중입니다.</span></div>`
+    : selected.latest_votes.length === 0
+      ? `<div class="detail-item"><span>저장된 표결 이력이 없습니다.</span></div>`
+      : selected.latest_votes.map((item) => `
+          <div class="detail-item">
+            <strong>${item.bill_name}</strong>
+            <span>${formatVoteDate(item.vote_date)} · ${item.result_vote_mod}</span>
+            ${item.link_url ? `<a href="${item.link_url}" target="_blank" rel="noreferrer">관련 의안 보기</a>` : ""}
+          </div>
+        `).join("");
+
+  elements.detailCard.innerHTML = `
+    <div class="detail-card__header">
+      <img class="avatar" src="${selected.photo_url || ""}" alt="${selected.name}">
+      <div>
+        <h2 class="detail-card__title">${selected.name}</h2>
+        <div class="detail-card__sub">${renderPartyVisual(selected.current_party, "large")} · ${selected.current_district || "지역구 정보 없음"}</div>
+        ${renderPartyHistory(selected, "detail")}
+        ${renderDistrictHistory(selected, "detail")}
+      </div>
+    </div>
+
+    <div class="detail-card__grid">
+      <div class="detail-metric">
+        <span>종합점수</span>
+        <strong>${selected.score.toFixed(1)}점</strong>
+      </div>
+      <div class="detail-metric">
+        <span>출석률</span>
+        <strong>${formatPercent(selected.attendance_rate)}</strong>
+      </div>
+      <div class="detail-metric">
+        <span>대표발의</span>
+        <strong>${selected.proposal_count.toLocaleString("ko-KR")}건</strong>
+      </div>
+      <div class="detail-metric">
+        <span>처리의안</span>
+        <strong>${selected.processed_proposal_count.toLocaleString("ko-KR")}건</strong>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h3>기본 정보</h3>
+      <div class="detail-list">
+        <div class="detail-item">
+          <strong>소속 위원회</strong>
+          <span>${selected.committee || "-"}</span>
+        </div>
+        <div class="detail-item">
+          <strong>연락처</strong>
+          <div class="contact-links">
+            ${renderContactLink("phone", selected.phone)}
+            ${renderContactLink("email", selected.email)}
+          </div>
+        </div>
+        <div class="detail-item">
+          <strong>홈페이지</strong>
+          ${selected.homepage_url ? `<a href="${selected.homepage_url}" target="_blank" rel="noreferrer">${selected.homepage_url}</a>` : `<span>-</span>`}
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <h3>최근 대표발의 이력</h3>
+      <div class="detail-list">${proposals}</div>
+    </div>
+
+    <div class="detail-section">
+      <h3>최근 표결 이력</h3>
+      <div class="detail-list">${votes}</div>
+    </div>
+  `;
+}
