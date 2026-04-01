@@ -301,7 +301,7 @@ function renderSummary(summary) {
     : "-";
 }
 
-function renderDetails() {
+function renderDetailsOld() {
   const selected = state.visibleRankings.find((entry) => entry.key === state.selectedKey) || state.rankings.find((entry) => entry.key === state.selectedKey);
   if (!selected) {
     elements.detailCard.innerHTML = `<div class="detail-card__placeholder">왼쪽 랭킹에서 의원을 선택하면 상세 정보가 표시됩니다.</div>`;
@@ -590,8 +590,7 @@ function renderDetails() {
       : selected.latest_proposals.map((item) => `
           <div class="detail-item">
             <strong>${item.link_url ? `<a href="${item.link_url}" target="_blank" rel="noreferrer">${item.bill_name}</a>` : item.bill_name}</strong>
-            <span>의안번호 ${item.bill_no || "-"} · 제안일 ${item.proposed_date || "-"}</span>
-            <span>상태 ${item.result || "-"}</span>
+            <span>의안번호 ${item.bill_no || "-"} · 제안일 ${item.proposed_date || "-"} · 상태: ${item.result || "-"}</span>
           </div>
         `).join("");
 
@@ -601,9 +600,8 @@ function renderDetails() {
       ? `<div class="detail-item"><span>저장된 표결 이력이 없습니다.</span></div>`
       : selected.latest_votes.map((item) => `
           <div class="detail-item">
-            <strong>${item.bill_name}</strong>
+            <strong>${item.link_url ? `<a href="${item.link_url}" target="_blank" rel="noreferrer">${item.bill_name}</a>` : item.bill_name}</strong>
             <span>${formatVoteDate(item.vote_date)} · ${item.result_vote_mod}</span>
-            ${item.link_url ? `<a href="${item.link_url}" target="_blank" rel="noreferrer">관련 의안 보기</a>` : ""}
           </div>
         `).join("");
 
