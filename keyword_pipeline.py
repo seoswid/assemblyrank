@@ -13,10 +13,18 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Callable, Iterable, Sequence
+import re
+from typing import Any, Callable, Iterable, Sequence
 
-from kiwipiepy import Kiwi
-from sklearn.feature_extraction.text import CountVectorizer
+try:
+    from kiwipiepy import Kiwi
+except ImportError:  # pragma: no cover - optional dependency fallback
+    Kiwi = None  # type: ignore[assignment]
+
+try:
+    from sklearn.feature_extraction.text import CountVectorizer
+except ImportError:  # pragma: no cover - optional dependency fallback
+    CountVectorizer = None  # type: ignore[assignment]
 
 from stopwords import (
     MemberContext,
@@ -28,6 +36,7 @@ from stopwords import (
 
 
 DEFAULT_ALLOWED_POS: tuple[str, ...] = ("NNG", "NNP", "SL")
+FALLBACK_TOKEN_PATTERN = re.compile(r"[가-힣A-Za-z][가-힣A-Za-z0-9]{1,}")
 
 
 @dataclass(slots=True)
@@ -66,8 +75,10 @@ class KeywordExtractionResult:
     top_terms: list[tuple[str, int]]
 
 
-def create_kiwi() -> Kiwi:
-    """Create a Kiwi tokenizer instance."""
+def create_kiwi() -> Kiwi | None:
+    """Create a Kiwi tokenizer instance when available."""
+    if Kiwi is None:
+        return None
     return Kiwi()
 
 
@@ -76,10 +87,19 @@ def tokenize_text(
     kiwi: Kiwi | None = None,
     allowed_pos: Sequence[str] = DEFAULT_ALLOWED_POS,
 ) -> list[TokenInfo]:
-    """Tokenize Korean text and keep only selected POS tags by default."""
+    """Tokenize Korean text and keep only selected POS tags by default.
+
+    Falls back to a regex-based noun-like tokenizer when `kiwipiepy` is not
+    installed in the runtime.
+    """
     tokenizer = kiwi or create_kiwi()
     allowed = set(allowed_pos)
     tokens: list[TokenInfo] = []
+    if tokenizer is None:
+        for match in FALLBACK_TOKEN_PATTERN.findall(text):
+            tokens.append(TokenInfo(text=match, pos="FALLBACK"))
+        return tokens
+
     for token in tokenizer.tokenize(text):
         if token.tag in allowed:
             tokens.append(TokenInfo(text=token.form, pos=token.tag))
@@ -234,6 +254,9 @@ def build_vectorizer(
     Korean text uses a user-defined analyzer here, so built-in English
     stopwords are intentionally disabled.
     """
+
+    if CountVectorizer is None:
+        raise ImportError("scikit-learn is required to build a CountVectorizer.")
 
     analyzer = make_sklearn_analyzer(
         registry=registry,
