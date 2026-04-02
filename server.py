@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import mimetypes
 import os
+import re
 import sqlite3
 import socket
 import threading
@@ -12,7 +14,7 @@ import traceback
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -65,6 +67,10 @@ RESULT_DB_UPLOAD_PATH = DATA_DIR / "assembly_rankings_result.uploading.db"
 REFRESH_STATUS_PATH = DATA_DIR / "refresh_status.json"
 API_URL_PATH = BASE_DIR / "API_URL.txt"
 ADMIN_UPLOAD_TOKEN = os.environ.get("ADMIN_UPLOAD_TOKEN", "").strip()
+NAVER_CLIENT_ID = os.environ.get("NAVER_CLIENT_ID", "").strip()
+NAVER_CLIENT_SECRET = os.environ.get("NAVER_CLIENT_SECRET", "").strip()
+NAVER_NEWS_CACHE_HOURS = int(os.environ.get("NAVER_NEWS_CACHE_HOURS", "24"))
+NEWS_KEYWORD_CACHE_VERSION = 2
 DEFAULT_ASSEMBLY_NUMBER = 22
 DEFAULT_ASSEMBLY_LABEL = f"제{DEFAULT_ASSEMBLY_NUMBER}대"
 PAGE_SIZE = 1000
@@ -293,6 +299,12 @@ def init_result_db(connection: sqlite3.Connection) -> None:
             member_key TEXT PRIMARY KEY,
             payload_json TEXT NOT NULL,
             generated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS member_news_cache (
+            member_key TEXT PRIMARY KEY,
+            payload_json TEXT NOT NULL,
+            fetched_at TEXT NOT NULL
         );
         """
     )
@@ -599,6 +611,337 @@ def build_member_detail_payload_from_row(
     }
 
 
+def naver_news_is_configured() -> bool:
+    return bool(NAVER_CLIENT_ID and NAVER_CLIENT_SECRET)
+
+
+def strip_html_tags(value: str | None) -> str:
+    text = html.unescape(str(value or ""))
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def fetch_naver_news_page(query: str, start: int, display: int = 100) -> list[dict[str, Any]]:
+    encoded_query = urllib.parse.quote(query)
+    url = (
+        "https://openapi.naver.com/v1/search/news.json"
+        f"?query={encoded_query}&display={display}&start={start}&sort=date"
+    )
+    request = urllib.request.Request(
+        url,
+        headers={
+            "X-Naver-Client-Id": NAVER_CLIENT_ID,
+            "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
+            "User-Agent": "assembly-ranking/1.0",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return payload.get("items", [])
+
+
+def district_base_tokens_v2(district_text: str | None) -> set[str]:
+    text = str(district_text or "")
+    tokens = set(re.findall(r"[가-힣A-Za-z]{2,}", text))
+    reduced = set()
+    for token in tokens:
+        reduced.add(token)
+        reduced.add(re.sub(r"(특별시|광역시|특별자치시|특별자치도|자치구|자치시|자치도|시|군|구|동|읍|면|갑|을|병|정)$", "", token))
+    return {token for token in reduced if len(token) >= 2}
+
+
+def build_member_specific_stopwords_v2(
+    member_name: str,
+    party_text: str | None = None,
+    district_text: str | None = None,
+) -> set[str]:
+    stopwords = {
+        "국회의원", "국회", "의원", "뉴스", "기사", "정치", "정당", "여당", "야당",
+        "논평", "대표", "발언", "회의", "참석", "관련", "발표", "입장", "위원회", "위원",
+        "브리핑", "속보", "단독", "정부", "질문", "답변", "처리", "법안", "발의", "표결",
+        "통과", "심사", "오늘", "내일", "어제", "이번", "최근", "지난", "현장", "기자",
+        "보도", "정치권", "정국", "논의", "추진", "검토", "논란", "후보", "인사",
+        "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종", "경기", "강원",
+        "충북", "충남", "전북", "전남", "경북", "경남", "제주",
+    }
+    stopwords.update(part for part in re.split(r"\s+", member_name) if part)
+    stopwords.add(normalize_name(member_name))
+
+    for value in (party_text, district_text):
+        for token in re.findall(r"[가-힣A-Za-z]{2,}", str(value or "")):
+            stopwords.add(token)
+            stopwords.add(token.replace(" ", ""))
+
+    stopwords.update(district_base_tokens_v2(district_text))
+    return {word for word in stopwords if word}
+
+
+def tokenize_keywords_v2(
+    text: str,
+    member_name: str,
+    party_text: str | None = None,
+    district_text: str | None = None,
+) -> list[str]:
+    stopwords = build_member_specific_stopwords_v2(member_name, party_text, district_text)
+    tokens = re.findall(r"[가-힣A-Za-z]{2,}", text)
+    return [
+        token for token in tokens
+        if token not in stopwords and normalize_name(token) not in stopwords
+    ]
+
+
+def build_monthly_news_keywords_v2(
+    member_name: str,
+    party_text: str | None = None,
+    district_text: str | None = None,
+) -> dict[str, Any]:
+    try:
+        from keyword_pipeline import analyze_documents
+        from stopwords import MemberContext, StopwordRegistry
+    except ImportError as error:
+        return {
+            "available": False,
+            "configured": naver_news_is_configured(),
+            "version": NEWS_KEYWORD_CACHE_VERSION,
+            "message": f"뉴스 키워드 분석 모듈을 불러오지 못했습니다: {error}",
+            "months": [],
+        }
+
+    if not naver_news_is_configured():
+        return {
+            "available": False,
+            "configured": False,
+            "version": NEWS_KEYWORD_CACHE_VERSION,
+            "message": "네이버 뉴스 API가 아직 설정되지 않았습니다.",
+            "months": [],
+        }
+
+    today = datetime.now()
+    cutoff_date = today - timedelta(days=365)
+    query = f"{member_name} 국회의원"
+    articles: list[dict[str, Any]] = []
+
+    for start in range(1, 1001, 100):
+        items = fetch_naver_news_page(query, start)
+        if not items:
+            break
+
+        reached_cutoff = False
+        for item in items:
+            pub_date_raw = str(item.get("pubDate", "")).strip()
+            try:
+                published_at = datetime.strptime(pub_date_raw, "%a, %d %b %Y %H:%M:%S %z").replace(tzinfo=None)
+            except ValueError:
+                continue
+
+            if published_at < cutoff_date:
+                reached_cutoff = True
+                continue
+
+            articles.append(
+                {
+                    "month": published_at.strftime("%Y-%m"),
+                    "title": strip_html_tags(item.get("title")),
+                    "description": strip_html_tags(item.get("description")),
+                }
+            )
+
+        if reached_cutoff:
+            break
+
+    monthly_bucket: dict[str, list[str]] = {}
+    for article in articles:
+        month_bucket = monthly_bucket.setdefault(
+            article["month"],
+            [],
+        )
+        month_bucket.append(f'{article["title"]} {article["description"]}'.strip())
+
+    registry = StopwordRegistry()
+    member_context = MemberContext(
+        member_name=member_name,
+        party_name=party_text or "",
+        district_name=district_text or "",
+        aliases=[f"{member_name} 의원", f"{member_name} 국회의원"],
+        related_regions=list(district_base_tokens_v2(district_text)),
+    )
+    months = []
+    for month in sorted(monthly_bucket.keys(), reverse=True):
+        analysis_result = analyze_documents(
+            monthly_bucket[month],
+            registry=registry,
+            member_context=member_context,
+        )
+        top_keywords = analysis_result.top_terms[:20]
+        months.append(
+            {
+                "month": month,
+                "article_count": len(monthly_bucket[month]),
+                "keywords": [
+                    {"keyword": keyword, "count": count}
+                    for keyword, count in top_keywords
+                ],
+            }
+        )
+
+    return {
+        "available": True,
+        "configured": True,
+        "version": NEWS_KEYWORD_CACHE_VERSION,
+        "message": None,
+        "months": months,
+    }
+
+
+def tokenize_keywords(text: str, member_name: str) -> list[str]:
+    stopwords = {
+        "국회의원", "의원", "뉴스", "기사", "대표", "위원회", "위원", "정부", "여당", "야당",
+        "정당", "정치", "속보", "단독", "브리핑", "논란", "관련", "대한", "이번", "오늘",
+        "내일", "어제", "지난", "최근", "발표", "회의", "질문", "답변", "처리", "법안",
+        "발의", "표결", "통과", "심사", "국회", "한국", "서울",
+    }
+    stopwords.update(part for part in re.split(r"\s+", member_name) if part)
+    tokens = re.findall(r"[가-힣A-Za-z]{2,}", text)
+    return [token for token in tokens if token not in stopwords]
+
+
+def build_monthly_news_keywords(member_name: str) -> dict[str, Any]:
+    if not naver_news_is_configured():
+        return {
+            "available": False,
+            "configured": False,
+            "message": "네이버 뉴스 API가 아직 설정되지 않았습니다.",
+            "months": [],
+        }
+
+    today = datetime.now()
+    cutoff_date = today - timedelta(days=365)
+    query = f"{member_name} 국회의원"
+    articles: list[dict[str, Any]] = []
+
+    for start in range(1, 1001, 100):
+        items = fetch_naver_news_page(query, start)
+        if not items:
+            break
+
+        reached_cutoff = False
+        for item in items:
+            pub_date_raw = str(item.get("pubDate", "")).strip()
+            try:
+                published_at = datetime.strptime(pub_date_raw, "%a, %d %b %Y %H:%M:%S %z").replace(tzinfo=None)
+            except ValueError:
+                continue
+
+            if published_at < cutoff_date:
+                reached_cutoff = True
+                continue
+
+            articles.append(
+                {
+                    "month": published_at.strftime("%Y-%m"),
+                    "title": strip_html_tags(item.get("title")),
+                    "description": strip_html_tags(item.get("description")),
+                }
+            )
+
+        if reached_cutoff:
+            break
+
+    monthly_bucket: dict[str, dict[str, Any]] = {}
+    for article in articles:
+        month_bucket = monthly_bucket.setdefault(
+            article["month"],
+            {"month": article["month"], "article_count": 0, "keyword_counts": {}},
+        )
+        month_bucket["article_count"] += 1
+        combined_text = f'{article["title"]} {article["description"]}'.strip()
+        for keyword in tokenize_keywords(combined_text, member_name):
+            month_bucket["keyword_counts"][keyword] = month_bucket["keyword_counts"].get(keyword, 0) + 1
+
+    months = []
+    for month in sorted(monthly_bucket.keys(), reverse=True):
+        keyword_counts = monthly_bucket[month]["keyword_counts"]
+        top_keywords = sorted(
+            keyword_counts.items(),
+            key=lambda item: (-item[1], item[0]),
+        )[:6]
+        months.append(
+            {
+                "month": month,
+                "article_count": monthly_bucket[month]["article_count"],
+                "keywords": [
+                    {"keyword": keyword, "count": count}
+                    for keyword, count in top_keywords
+                ],
+            }
+        )
+
+    return {
+        "available": True,
+        "configured": True,
+        "message": None,
+        "months": months,
+    }
+
+
+def get_member_news_keywords(
+    member_key: str,
+    member_name: str,
+    party_text: str | None = None,
+    district_text: str | None = None,
+) -> dict[str, Any]:
+    result_connection = sqlite3.connect(RESULT_DB_PATH)
+    result_connection.row_factory = sqlite3.Row
+    init_result_db(result_connection)
+    cached = result_connection.execute(
+        "SELECT payload_json, fetched_at FROM member_news_cache WHERE member_key = ?",
+        (member_key,),
+    ).fetchone()
+    cache_cutoff = datetime.now() - timedelta(hours=max(1, NAVER_NEWS_CACHE_HOURS))
+
+    if cached:
+        try:
+            fetched_at = datetime.fromisoformat(cached["fetched_at"])
+            cached_payload = json.loads(cached["payload_json"])
+            if (
+                fetched_at >= cache_cutoff
+                and cached_payload.get("version") == NEWS_KEYWORD_CACHE_VERSION
+            ):
+                result_connection.close()
+                return cached_payload
+        except Exception:
+            pass
+
+    try:
+        payload = build_monthly_news_keywords_v2(member_name, party_text, district_text)
+    except Exception as error:
+        if cached:
+            result_connection.close()
+            stale_payload = json.loads(cached["payload_json"])
+            stale_payload["message"] = stale_payload.get("message") or "저장된 뉴스 키워드를 표시하고 있습니다."
+            stale_payload["stale"] = True
+            return stale_payload
+
+        result_connection.close()
+        return {
+            "available": False,
+            "configured": naver_news_is_configured(),
+            "message": f"뉴스 키워드를 불러오지 못했습니다: {error}",
+            "months": [],
+        }
+
+    result_connection.execute(
+        """
+        INSERT OR REPLACE INTO member_news_cache (member_key, payload_json, fetched_at)
+        VALUES (?, ?, ?)
+        """,
+        (member_key, json.dumps(payload, ensure_ascii=False), datetime.now().isoformat(timespec="seconds")),
+    )
+    result_connection.commit()
+    result_connection.close()
+    return payload
+
+
 def build_dashboard_bundle_from_source() -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
@@ -799,6 +1142,11 @@ def build_dashboard_payload() -> dict[str, Any]:
 
 
 def build_member_detail_payload(member_key: str) -> dict[str, Any]:
+    member_name: str | None = None
+    party_text: str | None = None
+    district_text: str | None = None
+    payload: dict[str, Any] | None = None
+
     result_connection = sqlite3.connect(RESULT_DB_PATH)
     result_connection.row_factory = sqlite3.Row
     init_result_db(result_connection)
@@ -806,50 +1154,69 @@ def build_member_detail_payload(member_key: str) -> dict[str, Any]:
         "SELECT payload_json FROM member_detail_cache WHERE member_key = ?",
         (member_key,),
     ).fetchone()
-
-    if cached:
-        result_connection.close()
-        return json.loads(cached["payload_json"])
-
     dashboard_cached = result_connection.execute(
         "SELECT payload_json FROM dashboard_cache WHERE id = 1"
     ).fetchone()
     result_connection.close()
+
+    matched = None
     if dashboard_cached:
-        payload = json.loads(dashboard_cached["payload_json"])
+        dashboard_payload = json.loads(dashboard_cached["payload_json"])
         matched = next(
             (
-                item for item in payload.get("rankings", [])
+                item for item in dashboard_payload.get("rankings", [])
                 if item.get("key") == member_key
             ),
             None,
         )
-        if matched and (
-            "latest_proposals" in matched or "latest_votes" in matched
-        ):
-            return {
-                "key": member_key,
-                "latest_proposals": matched.get("latest_proposals", []),
-                "latest_votes": matched.get("latest_votes", []),
-            }
+        if matched:
+            member_name = matched.get("name")
+            party_text = matched.get("party") or matched.get("current_party")
+            district_text = matched.get("district") or matched.get("current_district")
+
+    if cached:
+        payload = json.loads(cached["payload_json"])
+    elif matched and (
+        "latest_proposals" in matched or "latest_votes" in matched
+    ):
+        payload = {
+            "key": member_key,
+            "latest_proposals": matched.get("latest_proposals", []),
+            "latest_votes": matched.get("latest_votes", []),
+        }
 
     source_connection = sqlite3.connect(DB_PATH)
     source_connection.row_factory = sqlite3.Row
     init_db(source_connection)
     member = source_connection.execute(
-        "SELECT naas_cd, name FROM members WHERE naas_cd = ?",
+        "SELECT naas_cd, name, party, district FROM members WHERE naas_cd = ?",
         (member_key,),
     ).fetchone()
-    if not member:
+    if member:
+        member_name = member["name"]
+        party_text = member["party"]
+        district_text = member["district"]
+    if not member and not payload:
         source_connection.close()
         raise FileNotFoundError("의원 상세 데이터를 찾을 수 없습니다.")
 
-    payload = build_member_detail_payload_from_row(
-        source_connection,
-        member["naas_cd"],
-        member["name"],
-    )
+    if payload is None and member:
+        payload = build_member_detail_payload_from_row(
+            source_connection,
+            member["naas_cd"],
+            member["name"],
+        )
     source_connection.close()
+
+    if payload is None:
+        raise FileNotFoundError("의원 상세 데이터를 찾을 수 없습니다.")
+
+    payload["news_keywords"] = get_member_news_keywords(
+        member_key,
+        member_name or "",
+        party_text,
+        district_text,
+    )
     return payload
 
 

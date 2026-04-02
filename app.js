@@ -225,10 +225,17 @@ async function loadMemberDetail(memberKey) {
     }
     target.latest_proposals = payload.latest_proposals || [];
     target.latest_votes = payload.latest_votes || [];
+    target.news_keywords = payload.news_keywords || null;
   } catch (error) {
     console.error(error);
     target.latest_proposals = [];
     target.latest_votes = [];
+    target.news_keywords = {
+      available: false,
+      configured: false,
+      message: "뉴스 키워드를 불러오지 못했습니다.",
+      months: [],
+    };
   } finally {
     delete state.detailLoadingKeys[memberKey];
   }
@@ -630,6 +637,110 @@ function setButtonsDisabled(disabled) {
   elements.refreshVotesButton.disabled = disabled;
 }
 
+function renderNewsKeywords(newsKeywords) {
+  if (!newsKeywords) {
+    return `<div class="detail-item"><span>뉴스 키워드를 불러오는 중입니다.</span></div>`;
+  }
+
+  if (!newsKeywords.available || !Array.isArray(newsKeywords.months) || newsKeywords.months.length === 0) {
+    return `<div class="detail-item"><span>${newsKeywords.message || "최근 1년 뉴스 키워드가 없습니다."}</span></div>`;
+  }
+
+  return newsKeywords.months.slice(0, 1).map((monthEntry) => {
+    const keywordItems = monthEntry.keywords || [];
+    const maxCount = Math.max(...keywordItems.map((item) => Number(item.count || 0)), 1);
+    const keywords = keywordItems
+      .map((item, index) => {
+        const weight = Number(item.count || 0) / maxCount;
+        const sizeClass = weight >= 0.9
+          ? "keyword-cloud__word--xl"
+          : weight >= 0.7
+            ? "keyword-cloud__word--lg"
+            : weight >= 0.5
+              ? "keyword-cloud__word--md"
+              : "keyword-cloud__word--sm";
+        const toneClass = `keyword-cloud__word--tone-${(index % 5) + 1}`;
+        return `<span class="keyword-cloud__word ${sizeClass} ${toneClass}" title="등장 ${item.count}회">${item.keyword}</span>`;
+      })
+      .join("");
+
+    return `
+      <div class="detail-item detail-item--stacked">
+        <strong>${monthEntry.month}</strong>
+        <span>뉴스 ${Number(monthEntry.article_count || 0).toLocaleString("ko-KR")}건</span>
+        <div class="keyword-chip-list">${keywords || `<span class="keyword-chip keyword-chip--muted">키워드 없음</span>`}</div>
+      </div>
+    `;
+  }).join("");
+}
+
+function escapeSvgText(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function createWordCloudImage(keywords) {
+  const width = 760;
+  const height = 420;
+  const palette = ["#39c58a", "#5d9cec", "#b18af2", "#f06292", "#f6b23c", "#51c7d9", "#7bc96f"];
+  const layout = [
+    { x: 0.22, y: 0.20 }, { x: 0.70, y: 0.18 }, { x: 0.40, y: 0.40 }, { x: 0.74, y: 0.44 },
+    { x: 0.18, y: 0.54 }, { x: 0.58, y: 0.62 }, { x: 0.32, y: 0.74 }, { x: 0.82, y: 0.70 },
+    { x: 0.10, y: 0.30 }, { x: 0.52, y: 0.22 }, { x: 0.86, y: 0.28 }, { x: 0.12, y: 0.76 },
+    { x: 0.44, y: 0.84 }, { x: 0.66, y: 0.82 }, { x: 0.90, y: 0.56 }, { x: 0.06, y: 0.60 },
+    { x: 0.34, y: 0.12 }, { x: 0.56, y: 0.48 }, { x: 0.78, y: 0.12 }, { x: 0.24, y: 0.90 },
+  ];
+
+  const maxCount = Math.max(...keywords.map((item) => Number(item.count || 0)), 1);
+  const words = keywords.slice(0, 20).map((item, index) => {
+    const weight = Number(item.count || 0) / maxCount;
+    const fontSize = weight >= 0.9 ? 112 : weight >= 0.7 ? 84 : weight >= 0.5 ? 64 : weight >= 0.3 ? 44 : 32;
+    const slot = layout[index % layout.length];
+    const color = palette[index % palette.length];
+    const rotate = [-8, 6, -4, 4, -6, 0][index % 6];
+    return `<text x="${Math.round(slot.x * width)}" y="${Math.round(slot.y * height)}" text-anchor="middle" dominant-baseline="middle" fill="${color}" font-size="${fontSize}" font-weight="700" transform="rotate(${rotate} ${Math.round(slot.x * width)} ${Math.round(slot.y * height)})">${escapeSvgText(item.keyword)}</text>`;
+  }).join("");
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <rect width="100%" height="100%" fill="#ffffff"/>
+      ${words}
+    </svg>
+  `.trim();
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function renderNewsKeywordCloud(newsKeywords) {
+  if (!newsKeywords) {
+    return `<div class="detail-item"><span>뉴스 키워드를 불러오는 중입니다.</span></div>`;
+  }
+
+  if (!newsKeywords.available || !Array.isArray(newsKeywords.months) || newsKeywords.months.length === 0) {
+    return `<div class="detail-item"><span>${newsKeywords.message || "최근 1년 뉴스 키워드가 없습니다."}</span></div>`;
+  }
+
+  return newsKeywords.months.slice(0, 1).map((monthEntry) => {
+    const keywordItems = monthEntry.keywords || [];
+    const imageSrc = createWordCloudImage(keywordItems);
+
+    return `
+      <div class="detail-item detail-item--stacked detail-item--cloud">
+        <strong>${monthEntry.month}</strong>
+        <span>뉴스 ${Number(monthEntry.article_count || 0).toLocaleString("ko-KR")}건</span>
+        <div class="keyword-cloud-image-wrap">
+          ${keywordItems.length
+            ? `<img class="keyword-cloud-image" src="${imageSrc}" alt="${monthEntry.month} 뉴스 키워드 워드클라우드">`
+            : `<span class="keyword-cloud__word keyword-cloud__word--muted">키워드 없음</span>`}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
 function renderDetails() {
   const selected = state.visibleRankings.find((entry) => entry.key === state.selectedKey)
     || state.rankings.find((entry) => entry.key === state.selectedKey);
@@ -643,7 +754,7 @@ function renderDetails() {
     ? `<div class="detail-item"><span>상세 이력을 불러오는 중입니다.</span></div>`
     : selected.latest_proposals.length === 0
       ? `<div class="detail-item"><span>저장된 대표발의 이력이 없습니다.</span></div>`
-      : selected.latest_proposals.map((item) => `
+      : selected.latest_proposals.slice(0, 2).map((item) => `
           <div class="detail-item">
             <strong>${item.link_url ? `<a href="${item.link_url}" target="_blank" rel="noreferrer">${item.bill_name}</a>` : item.bill_name}</strong>
             <span>의안번호 ${item.bill_no || "-"} · 제안일 ${item.proposed_date || "-"} · 상태: ${item.result || "-"}</span>
@@ -654,12 +765,14 @@ function renderDetails() {
     ? `<div class="detail-item"><span>상세 이력을 불러오는 중입니다.</span></div>`
     : selected.latest_votes.length === 0
       ? `<div class="detail-item"><span>저장된 표결 이력이 없습니다.</span></div>`
-      : selected.latest_votes.map((item) => `
+      : selected.latest_votes.slice(0, 2).map((item) => `
           <div class="detail-item">
             <strong>${item.link_url ? `<a href="${item.link_url}" target="_blank" rel="noreferrer">${item.bill_name}</a>` : item.bill_name}</strong>
             <span>${formatVoteDate(item.vote_date)} · ${item.result_vote_mod}</span>
           </div>
         `).join("");
+
+  const newsKeywords = renderNewsKeywordCloud(selected.news_keywords);
 
   elements.detailCard.innerHTML = `
     <div class="detail-card__header">
@@ -710,6 +823,11 @@ function renderDetails() {
           ${selected.homepage_url ? `<a href="${selected.homepage_url}" target="_blank" rel="noreferrer">${selected.homepage_url}</a>` : `<span>-</span>`}
         </div>
       </div>
+    </div>
+
+    <div class="detail-section">
+      <h3>뉴스 키워드</h3>
+      <div class="detail-list">${newsKeywords}</div>
     </div>
 
     <div class="detail-section">
