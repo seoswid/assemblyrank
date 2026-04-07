@@ -70,7 +70,7 @@ ADMIN_UPLOAD_TOKEN = os.environ.get("ADMIN_UPLOAD_TOKEN", "").strip()
 NAVER_CLIENT_ID = os.environ.get("NAVER_CLIENT_ID", "").strip()
 NAVER_CLIENT_SECRET = os.environ.get("NAVER_CLIENT_SECRET", "").strip()
 NAVER_NEWS_CACHE_HOURS = int(os.environ.get("NAVER_NEWS_CACHE_HOURS", "24"))
-NEWS_KEYWORD_CACHE_VERSION = 3
+NEWS_KEYWORD_CACHE_VERSION = 4
 DEFAULT_ASSEMBLY_NUMBER = 22
 DEFAULT_ASSEMBLY_LABEL = f"제{DEFAULT_ASSEMBLY_NUMBER}대"
 PAGE_SIZE = 1000
@@ -905,10 +905,15 @@ def get_member_news_keywords(
             cached_payload = json.loads(cached["payload_json"])
             cached_message = str(cached_payload.get("message") or "")
             has_legacy_import_error = "kiwipiepy" in cached_message
+            has_stale_unconfigured_state = (
+                cached_payload.get("configured") is False
+                and naver_news_is_configured()
+            )
             if (
                 fetched_at >= cache_cutoff
                 and cached_payload.get("version") == NEWS_KEYWORD_CACHE_VERSION
                 and not has_legacy_import_error
+                and not has_stale_unconfigured_state
             ):
                 result_connection.close()
                 return cached_payload
