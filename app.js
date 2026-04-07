@@ -667,7 +667,6 @@ function renderNewsKeywords(newsKeywords) {
     return `
       <div class="detail-item detail-item--stacked">
         <strong>${monthEntry.month}</strong>
-        <span>뉴스 ${Number(monthEntry.article_count || 0).toLocaleString("ko-KR")}건</span>
         <div class="keyword-chip-list">${keywords || `<span class="keyword-chip keyword-chip--muted">키워드 없음</span>`}</div>
       </div>
     `;
@@ -726,11 +725,11 @@ function renderNewsKeywordCloud(newsKeywords) {
   return newsKeywords.months.slice(0, 1).map((monthEntry) => {
     const keywordItems = monthEntry.keywords || [];
     const imageSrc = createWordCloudImage(keywordItems);
+    const articleCount = Number(monthEntry.article_count || 0).toLocaleString("ko-KR");
 
     return `
       <div class="detail-item detail-item--stacked detail-item--cloud">
-        <strong>${monthEntry.month}</strong>
-        <span>뉴스 ${Number(monthEntry.article_count || 0).toLocaleString("ko-KR")}건</span>
+        <strong>${monthEntry.month}(뉴스 ${articleCount}건)</strong>
         <div class="keyword-cloud-image-wrap">
           ${keywordItems.length
             ? `<img class="keyword-cloud-image" src="${imageSrc}" alt="${monthEntry.month} 뉴스 키워드 워드클라우드">`
