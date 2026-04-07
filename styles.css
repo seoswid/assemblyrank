@@ -722,8 +722,8 @@ tbody tr:last-child td {
 
 @media (max-width: 760px) {
   .page-shell {
-    width: min(100% - 20px, 1320px);
-    padding-top: 12px;
+    width: min(100% - 14px, 1320px);
+    padding: 8px 0 18px;
   }
 
   .hero__copy,
@@ -733,19 +733,237 @@ tbody tr:last-child td {
   .summary-card,
   .table-card,
   .detail-card {
-    border-radius: 20px;
+    border-radius: 18px;
+  }
+
+  .hero__copy,
+  .table-card,
+  .detail-card {
+    padding: 14px;
+  }
+
+  h1 {
+    font-size: clamp(1.45rem, 8vw, 2rem);
+    line-height: 1.16;
+  }
+
+  .hero__description {
+    font-size: 0.92rem;
+    line-height: 1.6;
+  }
+
+  .hero__actions {
+    justify-content: stretch;
+    gap: 8px;
+  }
+
+  .hero__actions .button {
+    flex: 1 1 100%;
+    width: 100%;
   }
 
   .toolbar {
     grid-template-columns: 1fr;
+    padding: 12px;
   }
 
-  th,
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .summary-card {
+    padding: 12px;
+  }
+
+  .summary-card__label {
+    font-size: 0.78rem;
+  }
+
+  .summary-card__value {
+    font-size: 1.08rem;
+    line-height: 1.25;
+    word-break: keep-all;
+  }
+
+  .content-grid {
+    gap: 10px;
+  }
+
+  .table-card__header {
+    display: block;
+  }
+
+  .table-card__header h2 {
+    font-size: 1.22rem;
+  }
+
+  .table-card__header p {
+    font-size: 0.88rem;
+    line-height: 1.5;
+  }
+
+  .table-card__caption {
+    margin-top: 8px;
+  }
+
+  .table-wrap {
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  table,
+  thead,
+  tbody,
+  tr,
   td {
-    padding: 12px 12px;
+    display: block;
+    width: 100%;
+  }
+
+  table {
+    background: transparent;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  tbody tr {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--card-strong);
+    box-shadow: 0 10px 22px rgba(24, 36, 52, 0.08);
+    overflow: hidden;
+  }
+
+  tbody tr:hover,
+  tbody tr.is-selected {
+    background: #f2f6fb;
+  }
+
+  td {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--line);
+    white-space: normal;
+  }
+
+  td::before {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  td:nth-child(1)::before {
+    content: "순위";
+  }
+
+  td:nth-child(2)::before {
+    content: "의원";
+  }
+
+  td:nth-child(3)::before {
+    content: "정당";
+  }
+
+  td:nth-child(4)::before {
+    content: "출석률";
+  }
+
+  td:nth-child(5)::before {
+    content: "대표발의";
+  }
+
+  td:nth-child(6)::before {
+    content: "처리의안";
+  }
+
+  td:nth-child(7)::before {
+    content: "종합점수";
+  }
+
+  td.empty {
+    display: block;
+    text-align: center;
+  }
+
+  td.empty::before {
+    content: none;
+  }
+
+  .name-cell {
+    gap: 10px;
+  }
+
+  .avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  .party-logo {
+    width: 104px;
+    height: 24px;
+  }
+
+  .secondary-button {
+    width: 100%;
   }
 
   .detail-card__grid {
     grid-template-columns: 1fr;
+  }
+
+  .detail-card__header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .detail-card__title {
+    font-size: 1.38rem;
+  }
+
+  .detail-item {
+    padding: 10px;
+  }
+
+  .keyword-cloud-image-wrap {
+    margin-top: 8px;
+  }
+
+  .contact-links {
+    display: grid;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 420px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  td {
+    grid-template-columns: 76px minmax(0, 1fr);
+    padding: 8px 10px;
+  }
+
+  .rank-badge {
+    min-width: 30px;
+    padding: 5px 8px;
+  }
+
+  .detail-card__sub {
+    gap: 6px;
   }
 }
