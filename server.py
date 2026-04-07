@@ -1496,6 +1496,11 @@ def flask_index() -> Response:
     return render_index_html()
 
 
+@app.get("/member/<member_key>")
+def flask_member_page(member_key: str) -> Response:
+    return render_index_html()
+
+
 @app.get("/app.js")
 def flask_app_js() -> Response:
     return send_from_directory(BASE_DIR, "app.js", mimetype="application/javascript")

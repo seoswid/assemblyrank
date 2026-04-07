@@ -153,6 +153,67 @@ h1 {
   border: 1px solid rgba(30, 49, 71, 0.14);
 }
 
+.button--muted,
+.secondary-button {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+  transform: none;
+}
+
+.hero {
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.58fr);
+}
+
+.hero__panel--trust {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+}
+
+.hero__panel--trust p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.hero__small {
+  font-size: 0.9rem;
+  color: var(--muted) !important;
+}
+
+.hero-search {
+  margin-top: 18px;
+  display: grid;
+  gap: 8px;
+}
+
+.hero-search label {
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.hero-search__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.hero-search input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 13px 16px;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--text);
+}
+
 .hero__stats {
   margin: 10px 0 0;
   display: grid;
@@ -177,10 +238,13 @@ h1 {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(160px, 0.8fr) minmax(160px, 0.8fr);
+  grid-template-columns: minmax(160px, 0.8fr) minmax(160px, 0.8fr);
   gap: 12px;
   padding: 14px;
   margin-top: 12px;
+  position: sticky;
+  top: 10px;
+  z-index: 5;
 }
 
 .field {
@@ -369,6 +433,12 @@ tbody tr:last-child td {
   background: rgba(48, 72, 99, 0.1);
 }
 
+.avatar--large {
+  width: 62px;
+  height: 62px;
+  border-radius: 20px;
+}
+
 .name-cell strong {
   display: block;
 }
@@ -441,6 +511,37 @@ tbody tr:last-child td {
   color: var(--muted);
 }
 
+.empty strong,
+.empty span {
+  display: block;
+}
+
+.empty strong {
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.skeleton-row span,
+.skeleton-text {
+  display: block;
+  min-height: 1.1em;
+  border-radius: 999px;
+  color: transparent;
+  background: linear-gradient(90deg, rgba(48, 72, 99, 0.08), rgba(48, 72, 99, 0.16), rgba(48, 72, 99, 0.08));
+  background-size: 180% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-row span {
+  width: 100%;
+  height: 46px;
+}
+
+@keyframes shimmer {
+  from { background-position: 180% 0; }
+  to { background-position: -180% 0; }
+}
+
 .detail-card__placeholder {
   min-height: 420px;
   display: grid;
@@ -475,6 +576,29 @@ tbody tr:last-child td {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.detail-actions {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.detail-actions__hint {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.score-note {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--brand-soft);
+  color: var(--brand-deep);
+  font-size: 0.92rem;
+  line-height: 1.6;
 }
 
 .detail-metric {
@@ -710,6 +834,80 @@ tbody tr:last-child td {
   height: 16px;
   flex: 0 0 16px;
   fill: currentColor;
+}
+
+.method-panel,
+.admin-panel {
+  margin-top: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  box-shadow: var(--shadow);
+  padding: 18px 20px;
+}
+
+.method-panel h2 {
+  margin: 0 0 8px;
+}
+
+.method-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.method-grid {
+  margin: 18px 0 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.method-grid div {
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(247, 250, 253, 0.9);
+  border: 1px solid var(--line);
+}
+
+.method-grid dt {
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.method-grid dd {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.admin-panel summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--brand-deep);
+}
+
+.admin-panel__body {
+  margin-top: 12px;
+  color: var(--muted);
+}
+
+.admin-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+body.is-detail-page .hero,
+body.is-detail-page .summary-grid,
+body.is-detail-page .toolbar,
+body.is-detail-page .table-card {
+  display: none;
+}
+
+body.is-detail-page .content-grid {
+  grid-template-columns: minmax(0, 860px);
+  justify-content: center;
 }
 
 @media (max-width: 1120px) {
@@ -965,5 +1163,43 @@ tbody tr:last-child td {
 
   .detail-card__sub {
     gap: 6px;
+  }
+}
+
+@media (max-width: 760px) {
+  .hero-search__row {
+    grid-template-columns: 1fr;
+  }
+
+  .method-grid {
+    grid-template-columns: 1fr;
+  }
+
+  td:nth-child(1)::before {
+    content: "순위";
+  }
+
+  td:nth-child(2)::before {
+    content: "의원";
+  }
+
+  td:nth-child(3)::before {
+    content: "정당";
+  }
+
+  td:nth-child(4)::before {
+    content: "출석률";
+  }
+
+  td:nth-child(5)::before {
+    content: "대표발의";
+  }
+
+  td:nth-child(6)::before {
+    content: "처리의안";
+  }
+
+  td:nth-child(7)::before {
+    content: "종합점수";
   }
 }

@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>국회의원 랭킹</title>
+  <title>국회의원 활동 랭킹</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=20260401c">
+  <link rel="stylesheet" href="/styles.css?v=20260407a">
 </head>
 <body>
   <div class="page-shell">
@@ -16,71 +16,78 @@
         <p class="eyebrow">Assembly Insight Ranking</p>
         <h1>내 세금으로 일하는 국회의원, 누가 정말 일하고 있을까?</h1>
         <p class="hero__description">
-          출석, 법안 발의, 처리 실적까지. 국민이 직접 확인하는 국회의원 활동 랭킹.
+          출석, 법안 발의, 처리 실적까지. 국민이 직접 확인하는 국회의원 활동 랭킹입니다.
         </p>
-        <div class="hero__actions">
-          <button id="loadButton" class="button button--primary">데이터 업데이트</button>
-          <button id="refreshVotesButton" class="button button--ghost">저장된 결과 불러오기</button>
+        <div class="hero-search" role="search">
+          <label for="searchInput">의원명, 정당, 지역구로 찾아보세요</label>
+          <div class="hero-search__row">
+            <input id="searchInput" type="search" placeholder="예: 강남, 김포, 기본소득당, 의원 이름">
+            <button id="districtFocusButton" class="button button--primary" type="button">내 지역구 의원 찾기</button>
+          </div>
+        </div>
+        <div class="hero__actions" aria-label="주요 탐색">
+          <button id="rankingsFocusButton" class="button button--ghost" type="button">랭킹 보기</button>
+          <button class="button button--muted" type="button" disabled>의원 비교 기능 준비 중</button>
         </div>
       </div>
+      <aside class="hero__panel hero__panel--trust" aria-label="서비스 안내">
+        <div class="hero__panel-label">한눈에 보는 기준</div>
+        <p>종합점수는 출석률 65%, 대표발의 25%, 처리의안 10%를 반영합니다.</p>
+        <p class="hero__small">점수는 활동을 이해하기 위한 참고 지표이며, 정책 품질이나 정치적 입장을 평가하지는 않습니다.</p>
+      </aside>
     </header>
 
-    <section class="toolbar">
-      <label class="field">
-        <span>검색</span>
-        <input id="searchInput" type="search" placeholder="의원명, 정당, 지역구 검색">
-      </label>
-      <label class="field">
-        <span>정당</span>
-        <select id="partyFilter">
-          <option value="">전체</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>정렬</span>
-        <select id="sortSelect">
-          <option value="score">종합점수</option>
-          <option value="attendanceRate">출석률</option>
-          <option value="proposalCount">대표발의</option>
-          <option value="processedProposalCount">처리의안</option>
-          <option value="voteCount">표결참여수</option>
-          <option value="name">이름</option>
-        </select>
-      </label>
-    </section>
-
-    <section class="status-panel">
+    <section class="status-panel" aria-live="polite">
       <div class="status-panel__message" id="statusMessage"></div>
       <div class="status-panel__meta" id="statusMeta"></div>
     </section>
 
-    <section class="summary-grid" id="summaryGrid">
+    <section class="summary-grid" id="summaryGrid" aria-label="전체 요약">
       <article class="summary-card">
-        <span class="summary-card__label">대상 의원(현역 기준)</span>
-        <strong class="summary-card__value" id="memberCount">-</strong>
+        <span class="summary-card__label">대상 의원 수</span>
+        <strong class="summary-card__value skeleton-text" id="memberCount">불러오는 중</strong>
       </article>
       <article class="summary-card">
         <span class="summary-card__label">평균 출석률</span>
-        <strong class="summary-card__value" id="avgAttendance">-</strong>
+        <strong class="summary-card__value skeleton-text" id="avgAttendance">불러오는 중</strong>
       </article>
       <article class="summary-card">
         <span class="summary-card__label">총 대표발의</span>
-        <strong class="summary-card__value" id="totalProposals">-</strong>
+        <strong class="summary-card__value skeleton-text" id="totalProposals">불러오는 중</strong>
       </article>
       <article class="summary-card">
         <span class="summary-card__label">가장 활발한 발의</span>
-        <strong class="summary-card__value" id="topProposer">-</strong>
+        <strong class="summary-card__value skeleton-text" id="topProposer">불러오는 중</strong>
       </article>
     </section>
 
-    <main class="content-grid">
+    <section class="toolbar" aria-label="랭킹 필터">
+      <label class="field">
+        <span>정당 필터</span>
+        <select id="partyFilter">
+          <option value="">전체 정당</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>정렬 기준</span>
+        <select id="sortSelect">
+          <option value="score">종합점수 높은 순</option>
+          <option value="attendanceRate">출석률 높은 순</option>
+          <option value="proposalCount">대표발의 많은 순</option>
+          <option value="processedProposalCount">처리의안 많은 순</option>
+          <option value="name">이름 가나다순</option>
+        </select>
+      </label>
+    </section>
+
+    <main class="content-grid" id="rankingSection">
       <section class="table-card">
         <div class="table-card__header">
           <div>
             <h2>국회의원 랭킹</h2>
-            <p>랭킹 행을 클릭하면 상세 정보와 최근 대표발의 이력을 확인할 수 있습니다.</p>
+            <p>의원 행을 선택하면 전용 상세 페이지에서 활동 정보를 확인할 수 있습니다.</p>
           </div>
-          <div class="table-card__caption" id="resultCount">0명</div>
+          <div class="table-card__caption" id="resultCount">랭킹을 준비 중입니다</div>
         </div>
         <div class="table-wrap">
           <table>
@@ -96,9 +103,9 @@
               </tr>
             </thead>
             <tbody id="rankingBody">
-              <tr>
-                <td colspan="7" class="empty">랭킹을 불러오면 결과가 여기에 표시됩니다.</td>
-              </tr>
+              <tr class="skeleton-row"><td colspan="7"><span></span></td></tr>
+              <tr class="skeleton-row"><td colspan="7"><span></span></td></tr>
+              <tr class="skeleton-row"><td colspan="7"><span></span></td></tr>
             </tbody>
           </table>
         </div>
@@ -109,35 +116,54 @@
 
       <aside class="detail-card" id="detailCard">
         <div class="detail-card__placeholder">
-          왼쪽 랭킹에서 의원을 선택하면 상세 정보가 표시됩니다.
+          의원을 선택하면 전용 상세 페이지로 이동합니다.
         </div>
       </aside>
     </main>
 
-    <section class="hero__panel info-panel">
-      <div class="hero__panel-label">집계 기준</div>
-      <dl class="hero__stats">
+    <section class="method-panel" id="methodology">
+      <div>
+        <p class="eyebrow">Data & Methodology</p>
+        <h2>데이터를 어떻게 읽어야 하나요?</h2>
+        <p>열린국회 오픈API 기준의 제22대 국회의원 데이터를 사용합니다. 결과는 시민이 활동 현황을 빠르게 살펴보기 위한 참고 정보입니다.</p>
+      </div>
+      <dl class="method-grid">
         <div>
-          <dt>대수</dt>
-          <dd id="assemblyLabel">제22대</dd>
+          <dt>데이터 출처</dt>
+          <dd>열린국회 오픈API: 국회의원 정보, 의안정보, 본회의 표결정보</dd>
         </div>
         <div>
-          <dt>종합점수</dt>
+          <dt>마지막 업데이트</dt>
+          <dd id="lastUpdatedText">확인 중</dd>
+        </div>
+        <div>
+          <dt>집계 기준</dt>
+          <dd><span id="assemblyLabel">제22대</span> 현역 기준. 출석은 찬성·반대·기권을 참여로 계산합니다.</dd>
+        </div>
+        <div>
+          <dt>종합점수 산식</dt>
           <dd>출석률 65% + 대표발의 25% + 처리의안 10%</dd>
         </div>
         <div>
-          <dt>출석률 정의</dt>
-          <dd>찬성·반대·기권을 출석, 불참을 결석으로 계산</dd>
-        </div>
-        <div>
-          <dt>발의 실적 정의</dt>
-          <dd>의안 API의 대표발의 건수를 집계</dd>
+          <dt>한계와 주의사항</dt>
+          <dd>정량 지표는 정책 품질, 지역 활동, 의정 영향력을 모두 설명하지 못합니다. 상세 정보와 함께 해석해 주세요.</dd>
         </div>
       </dl>
     </section>
+
+    <details class="admin-panel">
+      <summary>운영자 도구</summary>
+      <div class="admin-panel__body">
+        <p>데이터 갱신은 시간이 오래 걸릴 수 있습니다. 일반 사용자는 사용할 필요가 없습니다.</p>
+        <div class="admin-panel__actions">
+          <button id="loadButton" class="button button--primary" type="button">데이터 업데이트</button>
+          <button id="refreshVotesButton" class="button button--ghost" type="button">저장된 결과 불러오기</button>
+        </div>
+      </div>
+    </details>
   </div>
 
   <script>window.__INITIAL_DASHBOARD__ = null;</script>
-  <script type="module" src="./app.js?v=20260401c"></script>
+  <script type="module" src="/app.js?v=20260407a"></script>
 </body>
 </html>
